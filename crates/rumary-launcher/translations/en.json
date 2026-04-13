@@ -1,0 +1,17 @@
+{
+  "play": "PLAY",
+  "settings": "Settings",
+  "eng": "English",
+  "rus": "Russian",
+  "selected_client_name_empty": "Select a client",
+  "client": "Client",
+  "selected_profile_name_empty": "Select a profile",
+  "profile": "Profile",
+  "checking_files": "Checking files...",
+  "client_not_selected": "Client not selected!",
+  "launching": "Launching game...",
+  "launched": "Game launched!",
+  "api_url": "API URL",
+  "client_path": "Client Path:",
+  "username": "Username:" 
+}
