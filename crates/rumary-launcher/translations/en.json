@@ -13,5 +13,6 @@
   "launched": "Game launched!",
   "api_url": "API URL",
   "client_path": "Client Path:",
-  "username": "Username:" 
+  "username": "Username:",
+  "selected_version_empty": "Select a version"
 }
