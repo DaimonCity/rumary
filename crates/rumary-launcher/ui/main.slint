@@ -1,0 +1,147 @@
+import { Button, HorizontalBox, LineEdit, VerticalBox } from "std-widgets.slint";
+
+export component AppWindow inherits Window {
+    title: root.window_title;
+    width: 560px;
+    height: 620px;
+
+    in-out property <string> window_title: "Rumary Launcher";
+    in-out property <string> status_text: "Ready";
+
+    in-out property <string> selected_client_name: "";
+    in-out property <string> selected_profile_name: "";
+    in-out property <string> selected_version_name: "";
+
+    in-out property <string> play_label: "PLAY";
+    in-out property <string> settings_label: "Settings";
+    in-out property <string> fetch_versions_label: "Get versions";
+    in-out property <string> download_version_label: "Download selected version";
+
+    in-out property <string> client_label: "Client";
+    in-out property <string> profile_label: "Profile";
+    in-out property <string> version_label: "Version";
+    in-out property <string> api_url_label: "API URL";
+    in-out property <string> client_path_label: "Client Path";
+    in-out property <string> username_label: "Username";
+
+    in-out property <string> api_url: "";
+    in-out property <string> client_path: "";
+    in-out property <string> username: "";
+    in-out property <bool> settings_visible: false;
+
+    callback language_en();
+    callback language_ru();
+    callback previous_client();
+    callback next_client();
+    callback previous_profile();
+    callback next_profile();
+    callback previous_version();
+    callback next_version();
+    callback play();
+    callback toggle_settings();
+    callback fetch_versions();
+    callback download_selected_version();
+    callback save_settings();
+
+    VerticalBox {
+        padding: 12px;
+        spacing: 8px;
+
+        Text {
+            text: root.window_title;
+            font-size: 22px;
+        }
+
+        HorizontalBox {
+            spacing: 8px;
+            Button {
+                text: "EN";
+                clicked => { root.language_en(); }
+            }
+            Button {
+                text: "RU";
+                clicked => { root.language_ru(); }
+            }
+        }
+
+        HorizontalBox {
+            spacing: 8px;
+            Button {
+                text: "<";
+                clicked => { root.previous_version(); }
+            }
+            Button {
+                text: ">";
+                clicked => { root.next_version(); }
+            }
+            Text { text: root.version_label + ": " + root.selected_version_name; }
+        }
+
+        HorizontalBox {
+            spacing: 8px;
+            Button {
+                text: "<";
+                clicked => { root.previous_client(); }
+            }
+            Button {
+                text: ">";
+                clicked => { root.next_client(); }
+            }
+            Text { text: root.client_label + ": " + root.selected_client_name; }
+        }
+
+        HorizontalBox {
+            spacing: 8px;
+            Button {
+                text: "<";
+                clicked => { root.previous_profile(); }
+            }
+            Button {
+                text: ">";
+                clicked => { root.next_profile(); }
+            }
+            Text { text: root.profile_label + ": " + root.selected_profile_name; }
+        }
+
+        HorizontalBox {
+            spacing: 8px;
+            Button {
+                text: root.play_label;
+                clicked => { root.play(); }
+            }
+            Button {
+                text: root.settings_label;
+                clicked => { root.toggle_settings(); }
+            }
+            Button {
+                text: root.fetch_versions_label;
+                clicked => { root.fetch_versions(); }
+            }
+        }
+
+        Button {
+            text: root.download_version_label;
+            clicked => { root.download_selected_version(); }
+        }
+
+        Text { text: root.status_text; }
+
+        if root.settings_visible : VerticalBox {
+            spacing: 8px;
+
+            Text { text: root.api_url_label; }
+            LineEdit { text <=> root.api_url; }
+
+            Text { text: root.client_path_label; }
+            LineEdit { text <=> root.client_path; }
+
+            Text { text: root.username_label; }
+            LineEdit { text <=> root.username; }
+
+            Button {
+                text: "Save";
+                clicked => { root.save_settings(); }
+            }
+        }
+    }
+}
