@@ -14,6 +14,18 @@ pub struct Version {
     pub id: Uuid,
     pub name: String,
     pub url: String,
+    pub version_json: Option<VersionJson>
+}
+
+#[derive(Deserialize)]
+pub struct AssetJson {
+    pub objects: HashMap<String, AssetObject>,
+}
+
+#[derive(Deserialize)]
+pub struct AssetObject {
+    pub hash: String,
+    pub size: u64,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -30,10 +42,20 @@ pub struct FileEntry {
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct LaunchCommand {
-    pub main_class: String,
     pub jvm_args: Vec<String>,
+    pub main_class: String,
+    pub game_args: HashMap<String, String>,
+    pub classpath: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct UpdateLaunchCommand {
+    pub jvm_args: Vec<String>,
+    pub jar_file: String,
+    pub main_class: String,
     pub game_args: Vec<String>,
-    pub classpath: Vec<String>,
+    pub jar_dir: String,
+    pub classpath: String,
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
@@ -42,7 +64,7 @@ pub struct VersionManifest {
     pub versions: Value,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct VersionJson {
     pub arguments: Option<Arguments>,
 
@@ -80,7 +102,7 @@ pub struct VersionJson {
     pub version_type: String,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Downloads {
     pub client: DownloadInfo,
     pub client_mappings: Option<DownloadInfo>,
@@ -88,14 +110,15 @@ pub struct Downloads {
     pub server_mappings: Option<DownloadInfo>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct DownloadInfo {
+    pub path: Option<String>,
     pub sha1: String,
     pub size: u64,
     pub url: String,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Library {
     pub name: String,
     pub downloads: Option<LibraryDownloads>,
@@ -103,31 +126,31 @@ pub struct Library {
     pub natives: Option<HashMap<String, String>>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct LibraryDownloads {
     pub artifact: Option<DownloadInfo>,
     pub classifiers: Option<HashMap<String, DownloadInfo>>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Rule {
     pub action: String,
     pub os: Option<OsRule>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct OsRule {
     pub name: Option<String>,
     pub arch: Option<String>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Arguments {
     pub game: Option<Vec<Argument>>,
     pub jvm: Option<Vec<Argument>>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(untagged)]
 pub enum Argument {
     String(String),
@@ -137,14 +160,14 @@ pub enum Argument {
     },
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(untagged)]
 pub enum ArgumentValue {
     Single(String),
     Multiple(Vec<String>),
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct AssetIndex {
     pub id: String,
     pub sha1: String,
@@ -156,19 +179,19 @@ pub struct AssetIndex {
     pub url: String,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct JavaVersion {
     pub component: String,
     #[serde(rename = "majorVersion")]
     pub major_version: i32,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Logging {
     pub client: Option<LoggingClient>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct LoggingClient {
     pub argument: String,
     pub file: DownloadInfo,

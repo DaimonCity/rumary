@@ -1,3 +1,19 @@
 {
-  "play": "ИГРАТЬ"
+  "play": "Играть",
+  "settings": "Настройки",
+  "eng": "Английский",
+  "rus": "Русский",
+  "selected_client_name_empty": "Выберете клиент",
+  "client": "Клиент",
+  "selected_profile_name_empty": "Выберете профиль",
+  "profile": "Профиль",
+  "checking_files": "Проверка файлов...",
+  "client_not_selected": "Клиент не выбран!",
+  "launching": "Запуск игры...",
+  "launched": "Игра запущена!",
+  "api_url": "Ссылка API",
+  "client_path": "Путь до клиента",
+  "username": "Имя пользователя:",
+  "selected_version_empty": "Выберете версию",
+  "version": "Версия"
 }
