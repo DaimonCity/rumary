@@ -400,6 +400,7 @@ pub async fn save_version_json(
     }
 }
 
+// TODO: Remake it
 async fn read_version_json(client_path: &str, selected_ver: Option<String>) -> Option<VersionJson> {
     if let Some(s) = selected_ver {
         let path = Path::new(&client_path)
@@ -633,7 +634,6 @@ fn process_channels(ui: &AppWindow, state: &mut AppState) {
         }
 
         let index = state.selected_version.unwrap();
-
         state.versions[index].version_json = Some(read_json);
         state.launch_game();
     }

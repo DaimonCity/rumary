@@ -149,7 +149,7 @@ async fn download_assets_json(
     client: &ClientWithMiddleware,
     file_path: PathBuf,
     version_json: &VersionJson,
-) -> Result<(), Box<dyn Error + Send + Sync>> {
+) -> Result<AssetJson, Box<dyn Error + Send + Sync>> {
     if let Some(parent) = file_path.parent() {
         tokio::fs::create_dir_all(parent).await?;
     }
@@ -157,9 +157,10 @@ async fn download_assets_json(
     let url = &version_json.asset_index.url;
     let bytes = util::download(client, url).await?;
 
-    util::save_file(file_path, bytes).await?;
+    util::save_json::<AssetJson>(file_path.as_path(), &bytes).await?;
     println!("assets_json finished");
-    Ok(())
+
+    Ok(serde_json::from_slice(&bytes)?)
 }
 
 async fn download_assets(
@@ -167,24 +168,21 @@ async fn download_assets(
     client_path: &str,
     version_json: &VersionJson,
 ) -> Result<(), Box<dyn Error + Send + Sync>> {
-    if let Err(file_path) = util::assets_json_is_valid(client_path, version_json).await  {
-        download_assets_json(client, file_path, version_json).await?;
-    }
+    let json = match util::assets_json_is_valid(client_path, version_json).await {
+        Ok(path) => {
+            let bytes = tokio::fs::read(path).await?;
+            let json: AssetJson = serde_json::from_slice(&bytes)?; // TODO read_json func
+            json
+        }
+        Err(path) => {
+            download_assets_json(client, path, version_json).await?
+        }
+    };
 
-    let local_path = Path::new(&client_path)
+    let local_path = PathBuf::from(client_path)
         .join("assets")
-        .join(&version_json.id);
-
-    println!("{:?}", local_path);
-
-    let json_path = local_path
-        .join("indexes")
-        .join(format!("{}.json", version_json.asset_index.id));
-
-    let json_bytes = tokio::fs::read(json_path).await?;
-    let json: AssetJson = serde_json::from_slice(&json_bytes)?; // TODO: Read_json and Read_file? func
-
-    let local_path = local_path.join("objects");
+        .join(&version_json.id)
+        .join("objects");
     println!("{:?}", local_path);
 
     let mut set = JoinSet::new();
