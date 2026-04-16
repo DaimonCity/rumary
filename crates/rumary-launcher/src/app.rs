@@ -1,7 +1,7 @@
 use crate::config::LauncherConfig;
 use crate::i18n::Translator;
 use crate::models::{
-    AssetJson, LaunchCommand, LauncherClient, Library, Profile, Version, VersionJson,
+    LaunchCommand, LauncherClient, Profile, Version, VersionJson,
     VersionManifest,
 };
 use crate::ui::AppWindow;
@@ -15,10 +15,11 @@ use std::process::Command;
 use std::rc::Rc;
 use std::sync::mpsc;
 use std::time::Duration;
-use tokio::fs::File;
-use tokio::io::AsyncWriteExt;
 use tokio::runtime::Runtime;
 use uuid::Uuid;
+use reqwest_retry::{RetryTransientMiddleware, policies::ExponentialBackoff};
+use reqwest_middleware::{ClientBuilder, ClientWithMiddleware};
+use crate::util;
 
 type AppResult<T> = Result<T, Box<dyn Error>>;
 
@@ -27,41 +28,47 @@ pub struct LauncherApp {
     _poll_timer: slint::Timer,
 }
 
-struct AppChannels {
+pub struct AppChannels {
     // files: (mpsc::Sender<Vec<FileEntry>>, mpsc::Receiver<Vec<FileEntry>>),
-    manifest: (
+    pub manifest: (
         mpsc::Sender<VersionManifest>,
         mpsc::Receiver<VersionManifest>,
     ),
-    clients: (
+    pub  clients: (
         mpsc::Sender<Vec<LauncherClient>>,
         mpsc::Receiver<Vec<LauncherClient>>,
     ),
-    profiles: (mpsc::Sender<Vec<Profile>>, mpsc::Receiver<Vec<Profile>>),
-    launch: (mpsc::Sender<LaunchCommand>, mpsc::Receiver<LaunchCommand>),
-    minecraft: (mpsc::Sender<VersionJson>, mpsc::Receiver<VersionJson>),
-    read_json: (mpsc::Sender<VersionJson>, mpsc::Receiver<VersionJson>),
-    status: (mpsc::Sender<String>, mpsc::Receiver<String>)
+    pub profiles: (mpsc::Sender<Vec<Profile>>, mpsc::Receiver<Vec<Profile>>),
+    pub launch: (mpsc::Sender<LaunchCommand>, mpsc::Receiver<LaunchCommand>),
+    pub minecraft: (mpsc::Sender<VersionJson>, mpsc::Receiver<VersionJson>),
+    pub read_json: (mpsc::Sender<VersionJson>, mpsc::Receiver<VersionJson>),
+    pub status: (mpsc::Sender<String>, mpsc::Receiver<String>),
 }
 
-struct AppState {
-    translator: Translator,
-    config: LauncherConfig,
-    show_settings: bool,
-    clients: Vec<LauncherClient>,
-    profiles: Vec<Profile>,
-    versions: Vec<Version>,
-    selected_client: Option<usize>,
-    selected_profile: Option<usize>,
-    selected_version: Option<usize>,
-    status: String,
-    rt: Runtime,
-    channels: AppChannels,
+pub struct AppState {
+    pub translator: Translator,
+    pub config: LauncherConfig,
+    pub show_settings: bool,
+    pub clients: Vec<LauncherClient>,
+    pub profiles: Vec<Profile>,
+    pub versions: Vec<Version>,
+    pub selected_client: Option<usize>,
+    pub selected_profile: Option<usize>,
+    pub selected_version: Option<usize>,
+    pub status: String,
+    pub rt: Runtime,
+    pub channels: AppChannels,
+    pub reqwest_client: ClientWithMiddleware,
 }
 
 impl AppState {
     fn new() -> AppResult<Self> {
         let config = confy::load("rumary-launcher", None).unwrap_or_default();
+        let retry_policy = ExponentialBackoff::builder().build_with_max_retries(5);
+        let reqwest_client = ClientBuilder::new(reqwest::Client::new())
+            .with(RetryTransientMiddleware::new_with_policy(retry_policy))
+            .build();
+
         Ok(Self {
             translator: Translator::new("ru"),
             config,
@@ -84,15 +91,16 @@ impl AppState {
                 read_json: mpsc::channel(),
                 status: mpsc::channel(),
             },
+            reqwest_client,
         })
     }
 
-    fn selected_version_name(&self) -> Option<String> {
+    pub fn selected_version_name(&self) -> Option<String> {
         let index = self.selected_version?;
         Some(self.versions[index].name.clone())
     }
 
-    fn get_libraries_path(&self) -> Option<String> {
+    pub fn get_libraries_path(&self) -> Option<String> {
         let client_path = self.config.client_path.clone();
         let selected_ver = self.selected_version_name();
         if let Some(s) = selected_ver {
@@ -113,12 +121,8 @@ impl AppState {
         let _ = confy::store("rumary-launcher", None, &self.config);
     }
 
-    fn t(&self, key: &str) -> String {
-        self.translator.t(key)
-    }
-
     fn set_language(&mut self, lang: &str) {
-        self.translator.set_language(lang);
+        &self.translator.set_language(lang);
     }
 
     fn fetch_clients(&self) {
@@ -165,21 +169,6 @@ impl AppState {
     //         }
     //     });
     // }
-
-    fn download_manifest(&self) {
-        let tx = self.channels.manifest.0.clone();
-        self.rt.spawn(async move {
-            let result = reqwest::Client::new()
-                .get("https://launchermeta.mojang.com/mc/game/version_manifest.json")
-                .send()
-                .await;
-            if let Ok(response) = result
-                && let Ok(manifest) = response.json::<VersionManifest>().await
-            {
-                let _ = tx.send(manifest);
-            }
-        });
-    }
 
     fn launch_game(&self) {
         let tx = self.channels.launch.0.clone();
@@ -274,7 +263,7 @@ impl AppState {
     }
 
     fn run_game(&mut self, command: LaunchCommand) {
-        self.status = self.t("launching");
+        self.status = util::t(&self.translator, "launching");
 
         let root_path = &self.config.client_path;
         let classpath = &command.classpath;
@@ -300,7 +289,7 @@ impl AppState {
 
         println!("{:?}", cmd);
         match cmd.spawn() {
-            Ok(_) => self.status = self.t("launched"),
+            Ok(_) => self.status = util::t(&self.translator, "launched"),
             Err(error) => self.status = format!("Failed to launch game: {error}"),
         }
     }
@@ -336,76 +325,7 @@ impl AppState {
         };
     }
 
-    fn download_minecraft_version(&mut self, version_json: VersionJson) {
-        self.status = self.t("downloading_version");
-        let tx = self.channels.status.0.clone();
 
-        let client_path = self.config.client_path.clone();
-        let libs_path = if let Some(s) = self.get_libraries_path() {
-            PathBuf::from(s)
-        } else {
-            return;
-        };
-
-        let index = if let Some(i) = self.selected_version {
-            i
-        } else {
-            return;
-        };
-
-        let selected_ver = self.selected_version_name();
-
-        self.versions[index].version_json = Some(version_json.clone());
-
-        self.rt.spawn(async move {
-            let save = save_version_json(client_path.as_str(), selected_ver, &version_json);
-            let _ = tokio::join!(save);
-
-            let mc_task = download_minecraft_jar(&client_path, &version_json);
-
-            let libs = version_json.libraries.clone();
-            let libs_task = download_libs_task(libs_path, libs);
-
-            let assets_task = download_assets_json(&client_path, &version_json);
-
-            let (mc_res, lib_res, assets_res) = tokio::join!(mc_task, libs_task, assets_task);
-
-            if let Err(e) = mc_res {
-                eprintln!("minecraft error: {e}");
-            }
-            if let Err(e) = lib_res {
-                eprintln!("libs error: {e}");
-            }
-            if let Err(e) = assets_res {
-                eprintln!("assets error: {e}");
-            }
-
-            let assets_task = download_assets(&client_path, version_json).await;
-            if let Err(e) = assets_task {
-                eprintln!("assets error: {e}");
-            }
-
-            let _ = tx.send("Version downloaded!".to_string());
-        });
-    }
-
-    fn fetch_download_version_json(&self, version: Version) {
-        let tx = self.channels.minecraft.0.clone();
-
-        let f = async move {
-            let client = reqwest::Client::new();
-
-            let response = client.get(&version.url).send().await;
-
-            if let Ok(response) = response
-                && let Ok(version_json) = response.json::<VersionJson>().await
-            {
-                let _ = tx.send(version_json);
-            }
-        };
-
-        self.rt.spawn(f);
-    }
 
     // fn create_needed_dirs(&self) {
     //     let client_path = self.config.client_path.clone();
@@ -459,136 +379,9 @@ impl LauncherApp {
     }
 }
 
-async fn download_libs_task(
-    root_lib_path: PathBuf,
-    libs: Vec<Library>,
-) -> Result<(), Box<dyn Error + Send + Sync>> {
-    let client = reqwest::Client::new();
 
-    for lib in libs {
-        let artifact = lib.downloads.unwrap().artifact.unwrap();
-        let url = artifact.url;
-        let lib_path = artifact.path.unwrap();
 
-        let bytes = client.get(&url).send().await?.bytes().await?;
-
-        let full_path = root_lib_path.join(&lib_path);
-
-        if let Some(parent) = full_path.parent() {
-            fs::create_dir_all(parent)?;
-        }
-
-        let mut file = File::create(full_path).await?;
-        file.write_all(&bytes).await?;
-    }
-    println!("libs finished");
-
-    Ok(())
-}
-
-async fn download_minecraft_jar(
-    client_path: &str,
-    version_json: &VersionJson,
-) -> Result<(), Box<dyn Error + Send + Sync>> {
-    let client_download = reqwest::Client::new()
-        .get(&version_json.downloads.client.url)
-        .send()
-        .await?;
-
-    let bytes = client_download.bytes().await?;
-
-    let local_path = Path::new(&client_path)
-        .join("versions")
-        .join(&version_json.id);
-
-    if !local_path.exists() {
-        fs::create_dir_all(&local_path)?;
-    }
-
-    let file_path = local_path.join("client.jar");
-
-    let mut file = File::create(file_path).await?;
-    file.write_all(&bytes).await?;
-    println!("minecraft jar finished");
-
-    Ok(())
-}
-
-async fn download_assets_json(
-    client_path: &str,
-    version_json: &VersionJson,
-) -> Result<(), Box<dyn Error + Send + Sync>> {
-    let local_path = Path::new(&client_path)
-        .join("assets")
-        .join(&version_json.id)
-        .join("indexes");
-
-    let client_download = reqwest::Client::new()
-        .get(&version_json.asset_index.url)
-        .send()
-        .await?;
-
-    let bytes = client_download.bytes().await?;
-
-    if !local_path.exists() {
-        fs::create_dir_all(&local_path)?;
-    }
-    let file_path = local_path.join(format!("{}.json", version_json.asset_index.id));
-
-    let mut file = File::create(&file_path).await?;
-    file.write_all(&bytes).await?;
-    println!("assets_json finished");
-    Ok(())
-}
-
-async fn download_assets(
-    client_path: &str,
-    version_json: VersionJson,
-) -> Result<(), Box<dyn Error + Send + Sync>> {
-    let local_path = Path::new(&client_path)
-        .join("assets")
-        .join(&version_json.id);
-
-    println!("{:?}", local_path);
-
-    let file_path = local_path
-        .join("indexes")
-        .join(format!("{}.json", version_json.asset_index.id));
-    let bytes = tokio::fs::read(file_path).await?;
-
-    let local_path = local_path.join("objects");
-    println!("{:?}", local_path);
-
-    let json: AssetJson = serde_json::from_slice(&bytes)?;
-    for res in json.objects {
-        let res = res.1;
-        let dir_name = &res.hash[0..2];
-        let url =
-            "https://resources.download.minecraft.net/".to_string() + dir_name + "/" + &*res.hash;
-        let response = reqwest::Client::new().get(url).send().await?;
-        let bytes = response.bytes().await?;
-        let dir_path = Path::new(&local_path).join(dir_name);
-
-        if !dir_path.exists() {
-            let _ = fs::create_dir_all(&dir_path);
-        }
-
-        let mut file = match File::create(dir_path.join(&res.hash)).await {
-            Ok(f) => f,
-            Err(e) => {
-                eprintln!("assets error: {e}");
-                return Err(Box::from(e));
-            }
-        };
-
-        file.write_all(&bytes).await?;
-    }
-
-    println!("assets finished");
-    Ok(())
-}
-
-async fn save_version_json(
+pub async fn save_version_json(
     client_path: &str,
     selected_ver: Option<String>,
     version_json: &VersionJson,
@@ -852,18 +645,19 @@ fn process_channels(ui: &AppWindow, state: &mut AppState) {
     set_selection_labels(ui, state);
 }
 
+
 fn set_common_ui_values(ui: &AppWindow, state: &AppState) {
     ui.set_window_title("Rumary Launcher".into());
-    ui.set_play_label(state.t("play").into());
-    ui.set_settings_label(state.t("settings").into());
+    ui.set_play_label(util::t(&state.translator, "play").into());
+    ui.set_settings_label(util::t(&state.translator, "settings").into());
     ui.set_fetch_versions_label("Get versions".into());
     ui.set_download_version_label("Download selected version".into());
-    ui.set_client_label(state.t("client").into());
-    ui.set_profile_label(state.t("profile").into());
-    ui.set_version_label(state.t("version").into());
-    ui.set_api_url_label(state.t("api_url").into());
-    ui.set_client_path_label(state.t("client_path").into());
-    ui.set_username_label(state.t("username").into());
+    ui.set_client_label(util::t(&state.translator, "client").into());
+    ui.set_profile_label(util::t(&state.translator, "profile").into());
+    ui.set_version_label(util::t(&state.translator, "version").into());
+    ui.set_api_url_label(util::t(&state.translator, "api_url").into());
+    ui.set_client_path_label(util::t(&state.translator, "client_path").into());
+    ui.set_username_label(util::t(&state.translator, "username").into());
     ui.set_status_text(state.status.clone().into());
     ui.set_api_url(state.config.api_url.clone().into());
     ui.set_client_path(state.config.client_path.clone().into());
@@ -877,17 +671,17 @@ fn set_selection_labels(ui: &AppWindow, state: &AppState) {
         .selected_client
         .and_then(|idx| state.clients.get(idx))
         .map(|client| client.name.clone())
-        .unwrap_or_else(|| state.t("selected_client_name_empty"));
+        .unwrap_or_else(|| util::t(&state.translator, "selected_client_name_empty"));
     let profile = state
         .selected_profile
         .and_then(|idx| state.profiles.get(idx))
         .map(|profile| profile.name.clone())
-        .unwrap_or_else(|| state.t("selected_profile_name_empty"));
+        .unwrap_or_else(|| util::t(&state.translator, "selected_profile_name_empty"));
     let version = state
         .selected_version
         .and_then(|idx| state.versions.get(idx))
         .map(|version| version.name.clone())
-        .unwrap_or_else(|| state.t("selected_version_empty"));
+        .unwrap_or_else(|| util::t(&state.translator, "selected_version_empty"));
     ui.set_selected_client_name(client.into());
     ui.set_selected_profile_name(profile.into());
     ui.set_selected_version_name(version.into());

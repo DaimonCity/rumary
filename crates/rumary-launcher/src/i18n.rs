@@ -6,6 +6,7 @@ use std::collections::HashMap;
 #[folder = "translations/"]
 struct TranslationAsset;
 
+#[derive(Clone)]
 pub struct Translator {
     current_lang: String,
     values: HashMap<String, String>,
