@@ -122,7 +122,7 @@ impl AppState {
     }
 
     fn set_language(&mut self, lang: &str) {
-        &self.translator.set_language(lang);
+        self.translator.set_language(lang);
     }
 
     fn fetch_clients(&self) {
@@ -222,7 +222,7 @@ impl AppState {
             };
             let game_dir = game_dir.as_path().to_string_lossy().to_string();
 
-            let asset_index = version_json.id;
+            let asset_index = version_json.asset_index.id;
 
             let mut game_args: HashMap<String, String> = HashMap::new();
             game_args.insert("username".into(), "Daimon".into());

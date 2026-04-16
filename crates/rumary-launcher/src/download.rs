@@ -1,16 +1,14 @@
+use crate::app::AppState;
+use crate::app::save_version_json;
+use crate::models::{AssetJson, Library, Version, VersionJson, VersionManifest};
+use crate::util;
+use reqwest_middleware::ClientWithMiddleware;
 use std::error::Error;
 use std::path::{Path, PathBuf};
-use reqwest_middleware::{ClientWithMiddleware};
 use tokio::fs;
 use tokio::fs::File;
 use tokio::io::AsyncWriteExt;
-use crate::models::{
-    AssetJson, Library, Version, VersionJson,
-    VersionManifest,
-};
-use crate::app::AppState;
-use crate::app::save_version_json;
-use crate::util;
+use tokio::task::JoinSet;
 
 impl AppState {
     pub fn download_manifest(&self) {
@@ -54,13 +52,12 @@ impl AppState {
         self.rt.spawn(async move {
             let save = save_version_json(client_path.as_str(), selected_ver, &version_json);
             let _ = tokio::join!(save);
+            let libs = version_json.libraries.clone();
 
+            let assets_task = download_assets(&reqwest_client, &client_path, &version_json);
             let mc_task = download_minecraft_jar(&reqwest_client, &client_path, &version_json);
 
-            let libs = version_json.libraries.clone();
             let libs_task = download_libs_task(&reqwest_client, libs_path, libs);
-
-            let assets_task = download_assets_json(&reqwest_client, &client_path, &version_json);
 
             let (mc_res, lib_res, assets_res) = tokio::join!(mc_task, libs_task, assets_task);
 
@@ -71,11 +68,6 @@ impl AppState {
                 eprintln!("libs error: {e}");
             }
             if let Err(e) = assets_res {
-                eprintln!("assets error: {e}");
-            }
-
-            let assets_task = download_assets(&reqwest_client, &client_path, version_json).await;
-            if let Err(e) = assets_task {
                 eprintln!("assets error: {e}");
             }
 
@@ -155,24 +147,17 @@ async fn download_minecraft_jar(
 
 async fn download_assets_json(
     client: &ClientWithMiddleware,
-    client_path: &str,
+    file_path: PathBuf,
     version_json: &VersionJson,
 ) -> Result<(), Box<dyn Error + Send + Sync>> {
+    if let Some(parent) = file_path.parent() {
+        tokio::fs::create_dir_all(parent).await?;
+    }
+
     let url = &version_json.asset_index.url;
     let bytes = util::download(client, url).await?;
 
-    let local_path = Path::new(&client_path)
-        .join("assets")
-        .join(&version_json.id)
-        .join("indexes");
-
-    if !local_path.exists() {
-        fs::create_dir_all(&local_path).await?;
-    }
-    let file_path = local_path.join(format!("{}.json", version_json.asset_index.id));
-
-    let mut file = File::create(&file_path).await?;
-    file.write_all(&bytes).await?;
+    util::save_file(file_path, bytes).await?;
     println!("assets_json finished");
     Ok(())
 }
@@ -180,45 +165,54 @@ async fn download_assets_json(
 async fn download_assets(
     client: &ClientWithMiddleware,
     client_path: &str,
-    version_json: VersionJson,
+    version_json: &VersionJson,
 ) -> Result<(), Box<dyn Error + Send + Sync>> {
+    if let Err(file_path) = util::assets_json_is_valid(client_path, version_json).await  {
+        download_assets_json(client, file_path, version_json).await?;
+    }
+
     let local_path = Path::new(&client_path)
         .join("assets")
         .join(&version_json.id);
 
     println!("{:?}", local_path);
 
-    let file_path = local_path
+    let json_path = local_path
         .join("indexes")
         .join(format!("{}.json", version_json.asset_index.id));
-    let bytes = tokio::fs::read(file_path).await?;
+
+    let json_bytes = tokio::fs::read(json_path).await?;
+    let json: AssetJson = serde_json::from_slice(&json_bytes)?; // TODO: Read_json and Read_file? func
 
     let local_path = local_path.join("objects");
     println!("{:?}", local_path);
 
-    let json: AssetJson = serde_json::from_slice(&bytes)?;
-    for res in json.objects {
-        let res = res.1;
+    let mut set = JoinSet::new();
+
+    for (_key, res) in json.objects {
         let dir_name = &res.hash[0..2];
-        let url = "https://resources.download.minecraft.net/".to_string() + dir_name + "/" + &*res.hash;
-        let bytes = util::download(client, &url).await?;
-        let dir_path = Path::new(&local_path).join(dir_name);
+        let url = format!("https://resources.download.minecraft.net/{}/{}", dir_name, res.hash);
 
-        if !dir_path.exists() {
-            let _ = fs::create_dir_all(&dir_path).await;
+        let file_path = local_path.join(dir_name).join(&res.hash);
+        let client = client.clone();
+
+        set.spawn(async move {
+            let bytes = util::download(&client, &url).await?;
+            util::save_file(file_path, bytes).await?;
+            Ok::<(), Box<dyn Error + Send + Sync>>(())
+        });
+
+        if set.len() > 20 && let Some(res) = set.join_next().await {
+            res??;
         }
+    }
 
-        let mut file = match File::create(dir_path.join(&res.hash)).await {
-            Ok(f) => f,
-            Err(e) => {
-                eprintln!("assets error: {e}");
-                return Err(Box::from(e));
-            }
-        };
-
-        file.write_all(&bytes).await?;
+    while let Some(res) = set.join_next().await {
+        res??; // Распаковываем результат выполнения и возможную ошибку внутри
     }
 
     println!("assets finished");
     Ok(())
 }
+
+
