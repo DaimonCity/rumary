@@ -5,6 +5,7 @@ mod models;
 mod ui;
 pub mod download;
 pub mod util;
+pub mod result;
 
 use app::LauncherApp;
 

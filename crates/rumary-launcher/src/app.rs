@@ -1,10 +1,12 @@
 use crate::config::LauncherConfig;
 use crate::i18n::Translator;
 use crate::models::{
-    LaunchCommand, LauncherClient, Profile, Version, VersionJson,
-    VersionManifest,
+    LaunchCommand, LauncherClient, Profile, Version, VersionJson, VersionManifest,
 };
 use crate::ui::AppWindow;
+use crate::util;
+use reqwest_middleware::{ClientBuilder, ClientWithMiddleware};
+use reqwest_retry::{RetryTransientMiddleware, policies::ExponentialBackoff};
 use slint::ComponentHandle;
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -13,13 +15,10 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::rc::Rc;
-use std::sync::mpsc;
+use std::sync::{Arc, mpsc};
 use std::time::Duration;
 use tokio::runtime::Runtime;
 use uuid::Uuid;
-use reqwest_retry::{RetryTransientMiddleware, policies::ExponentialBackoff};
-use reqwest_middleware::{ClientBuilder, ClientWithMiddleware};
-use crate::util;
 
 type AppResult<T> = Result<T, Box<dyn Error>>;
 
@@ -34,7 +33,7 @@ pub struct AppChannels {
         mpsc::Sender<VersionManifest>,
         mpsc::Receiver<VersionManifest>,
     ),
-    pub  clients: (
+    pub clients: (
         mpsc::Sender<Vec<LauncherClient>>,
         mpsc::Receiver<Vec<LauncherClient>>,
     ),
@@ -246,19 +245,20 @@ impl AppState {
         });
     }
 
-    fn checking(&self) {
+    fn prelude_play(&self) {
         let tx = self.channels.read_json.0.clone();
 
         let root_path = self.config.client_path.clone();
-        let selected_ver = self.selected_version_name();
-
+        let version = self.get_version();
+        
         self.rt.spawn(async move {
-            let r = match read_version_json(&root_path, selected_ver).await {
-                Some(r) => r,
-                None => return,
-            };
+            if let Some(v) =  version {
+                let version = util::version_json_path(&root_path, &v.name);
 
-            let _ = tx.send(r);
+                if let Ok(j) = util::read_json(version).await {
+                    let _ = tx.send(j);
+                }
+            }
         });
     }
 
@@ -309,12 +309,15 @@ impl AppState {
                         .and_then(|value| value.as_str())
                         .unwrap_or_default()
                         .to_string();
-                    self.versions.push(Version {
+
+                    let ver = Version {
                         id: Uuid::new_v4(),
                         name,
                         url,
                         version_json: None,
-                    });
+                    };
+
+                    self.versions.push(ver);
                 }
             }
         }
@@ -324,8 +327,6 @@ impl AppState {
             Some(0)
         };
     }
-
-
 
     // fn create_needed_dirs(&self) {
     //     let client_path = self.config.client_path.clone();
@@ -379,47 +380,6 @@ impl LauncherApp {
     }
 }
 
-
-
-pub async fn save_version_json(
-    client_path: &str,
-    selected_ver: Option<String>,
-    version_json: &VersionJson,
-) {
-    if let Some(s) = selected_ver {
-        let path = Path::new(&client_path).join("versions").join(s);
-
-        if !path.exists() {
-            fs::create_dir_all(&path).unwrap();
-        }
-
-        let file_path = path.join("version.json");
-        let file = fs::File::create(file_path).unwrap();
-        serde_json::to_writer_pretty(file, &version_json).unwrap();
-        println!("version.json saved");
-    }
-}
-
-// TODO: Remake it
-async fn read_version_json(client_path: &str, selected_ver: Option<String>) -> Option<VersionJson> {
-    if let Some(s) = selected_ver {
-        let path = Path::new(&client_path)
-            .join("versions")
-            .join(s)
-            .join("version.json");
-
-        if !path.exists() {
-            return None;
-        }
-        println!("{:?}", path);
-
-        let bytes = tokio::fs::read(path).await.unwrap();
-
-        let version_json: VersionJson = serde_json::from_slice(&bytes).unwrap();
-        return Some(version_json);
-    }
-    None
-}
 fn collect_jars(dir: &Path, jars: &mut Vec<String>) {
     if let Ok(entries) = fs::read_dir(dir) {
         for entry in entries.flatten() {
@@ -540,7 +500,7 @@ fn wire_callbacks(ui: &AppWindow, state: Rc<RefCell<AppState>>) {
             if let Some(window) = weak.upgrade() {
                 let state = state.borrow_mut();
 
-                state.checking();
+                state.prelude_play();
                 window.set_status_text(state.status.clone().into());
             }
         }
@@ -624,8 +584,8 @@ fn process_channels(ui: &AppWindow, state: &mut AppState) {
     while let Ok(minecraft) = state.channels.minecraft.1.try_recv() {
         //..тут нужна функция валидности нынешнего майна
         // например: let is_valid = validation(minecraft)
-
-        state.download_minecraft_version(minecraft)
+        let minecraft = Arc::new(minecraft);
+        state.download_minecraft_version(minecraft.clone());
     }
 
     while let Ok(read_json) = state.channels.read_json.1.try_recv() {
@@ -633,9 +593,10 @@ fn process_channels(ui: &AppWindow, state: &mut AppState) {
             break;
         }
 
-        let index = state.selected_version.unwrap();
-        state.versions[index].version_json = Some(read_json);
-        state.launch_game();
+        if let Some(index) = state.selected_version {
+            state.versions[index].version_json = Some(read_json);
+            state.launch_game();
+        }
     }
     while let Ok(status) = state.channels.status.1.try_recv() {
         state.status = status;
@@ -644,7 +605,6 @@ fn process_channels(ui: &AppWindow, state: &mut AppState) {
     ui.set_status_text(state.status.clone().into());
     set_selection_labels(ui, state);
 }
-
 
 fn set_common_ui_values(ui: &AppWindow, state: &AppState) {
     ui.set_window_title("Rumary Launcher".into());

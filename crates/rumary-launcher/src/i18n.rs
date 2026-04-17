@@ -34,16 +34,28 @@ impl Translator {
             .unwrap_or_else(|| key.to_string())
     }
 
+    // Эта функция способна распаковать из json случай: "foo": {...}
     fn load(&mut self) {
         let filename = format!("{}.json", self.current_lang);
-        if let Some(file) = TranslationAsset::get(&filename)
-            && let Ok(value) = serde_json::from_slice::<Value>(&file.data)
-            && let Value::Object(map) = value
+        if let Some(file) = TranslationAsset::get(&filename) &&
+            let Ok(value) = serde_json::from_slice::<Value>(&file.data) && // может, это можно переписать под наши utils
+            let Value::Object(map) = value
         {
             self.values = map
                 .into_iter()
                 .map(|(key, value)| (key, value.as_str().unwrap_or_default().to_string()))
                 .collect();
+        }
+    }
+
+    // Эта функция нужна только для формата {"foo": "value", "foo1": "value1"...}
+    fn _load(&mut self) {
+        let filename = format!("{}.json", self.current_lang);
+
+        if let Some(file) = TranslationAsset::get(&filename)
+            && let Ok(map) = serde_json::from_slice::<HashMap<String, String>>(&file.data)
+        {
+            self.values = map;
         }
     }
 }

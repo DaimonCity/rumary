@@ -1,11 +1,14 @@
 use crate::i18n::Translator;
-use crate::models::VersionJson;
+use crate::result::UtilResult;
 use bytes::Bytes;
+use reqwest::{IntoUrl, Response};
 use reqwest_middleware::ClientWithMiddleware;
-use serde::Deserialize;
 use serde::de::DeserializeOwned;
+use serde::Serialize;
 use std::error::Error;
+use std::ops::Deref;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use tokio::io::{AsyncWriteExt, BufWriter};
 use tokio::task;
 
@@ -13,34 +16,38 @@ pub fn t(trans: &Translator, key: &str) -> String {
     trans.t(key)
 }
 
-pub async fn assets_json_is_valid(
-    client_path: &str,
-    version_json: &VersionJson,
-) -> Result<PathBuf, PathBuf> {
-    let local_path = Path::new(&client_path)
+pub fn asset_json_path<P: AsRef<Path>>(client_path: P, version: &str, asset_index: &str) -> PathBuf {
+    client_path
+        .as_ref()
         .join("assets")
-        .join(&version_json.id)
-        .join("indexes");
-    let file_path = local_path.join(format!("{}.json", version_json.asset_index.id));
-
-    if file_path.exists() {
-        Ok(file_path)
-    } else {
-        Err(file_path)
-    }
+        .join(&version)
+        .join("indexes")
+        .join(format!("{}.json", asset_index))
 }
 
-pub async fn download(
+pub fn version_json_path<P: AsRef<Path>>(client_path: P, version: &str) -> PathBuf {
+    client_path
+        .as_ref()
+        .join("versions")
+        .join(&version)
+        .join("client.jar")
+}
+
+pub async fn download_file<U: IntoUrl>(client: &ClientWithMiddleware, url: U) -> UtilResult<Bytes> {
+    Ok(get_response(client, url).await?.bytes().await?)
+}
+
+pub async fn get_response<U: IntoUrl>(
     client: &ClientWithMiddleware,
-    url: &str,
-) -> Result<Bytes, Box<dyn Error + Send + Sync>> {
-    Ok(client.get(url).send().await?.bytes().await?)
+    url: U,
+) -> UtilResult<Response> {
+    Ok(client.get(url).send().await?)
 }
 
-pub async fn read_json<J: DeserializeOwned + Send + 'static>(
-    json_path: &Path,
+pub async fn read_json<P: AsRef<Path>, J: DeserializeOwned + Send + 'static>(
+    json_path: P,
 ) -> Result<J, Box<dyn Error + Send + Sync>> {
-    if !json_path.exists() {
+    if !json_path.as_ref().exists() {
         return Err(Box::from("json_path does not exist"));
     }
 
@@ -52,34 +59,46 @@ pub async fn read_json<J: DeserializeOwned + Send + 'static>(
     .await?
 }
 
-pub async fn save_file(
-    file_path: PathBuf,
-    bytes: Bytes,
-) -> Result<(), Box<dyn Error + Send + Sync>> {
-    if let Some(parent) = file_path.parent() {
+pub async fn save_file<P: AsRef<Path>>(file_path: P, bytes: &[u8]) -> UtilResult<()> {
+    if let Some(parent) = file_path.as_ref().parent() {
         tokio::fs::create_dir_all(parent).await?;
     }
 
     let file = tokio::fs::File::create(file_path).await?;
     let mut writer = BufWriter::new(file);
-    writer.write_all(&bytes).await?;
+    writer.write_all(bytes).await?;
     writer.flush().await?;
 
     Ok(())
 }
 
-pub async fn save_json<'a, J: Deserialize<'a>>(
-    json_path: &Path,
-    bytes: &Bytes,
-) -> Result<(), Box<dyn Error + Send + Sync>> {
-    if let Some(parent) = json_path.parent() {
-        tokio::fs::create_dir_all(parent).await?;
-    }
+pub async fn save_json<P: AsRef<Path>, J: Serialize + Send + Sync + 'static>(
+    json_path: P,
+    json: Arc<J>,
+) -> UtilResult<()> {
+    let data = task::spawn_blocking({
+        let json = json.clone();
+        move || serde_json::to_vec_pretty(json.deref())
+    })
+        .await??;
 
-    let file = tokio::fs::File::create(json_path).await?;
-    let mut writer = BufWriter::new(file);
-    writer.write_all(bytes).await?;
-    writer.flush().await?;
+    save_file(json_path, &data).await?;
+
+    Ok(())
+}
+
+pub async fn _save_json<P: AsRef<Path>, J: Serialize + Send + Sync + 'static>(
+    json_path: P,
+    json: J,
+) -> UtilResult<()> {
+    let json = Arc::new(json);
+    let data = task::spawn_blocking({
+        let json = json.clone();
+        move || serde_json::to_vec_pretty(json.deref())
+    })
+        .await??;
+
+    save_file(json_path, &data).await?;
 
     Ok(())
 }

@@ -17,12 +17,12 @@ pub struct Version {
     pub version_json: Option<VersionJson>
 }
 
-#[derive(Deserialize)]
+#[derive(Serialize, Deserialize)]
 pub struct AssetJson {
     pub objects: HashMap<String, AssetObject>,
 }
 
-#[derive(Deserialize)]
+#[derive(Serialize, Deserialize)]
 pub struct AssetObject {
     pub hash: String,
     pub size: u64,
