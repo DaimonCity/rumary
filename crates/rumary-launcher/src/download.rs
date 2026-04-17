@@ -169,13 +169,11 @@ async fn download_assets(
     version_json: &VersionJson,
 ) -> Result<(), Box<dyn Error + Send + Sync>> {
     let json = match util::assets_json_is_valid(client_path, version_json).await {
-        Ok(path) => {
-            let bytes = tokio::fs::read(path).await?;
-            let json: AssetJson = serde_json::from_slice(&bytes)?; // TODO read_json func
-            json
+        Ok(json_path) => {
+            util::read_json(json_path.as_path()).await?
         }
-        Err(path) => {
-            download_assets_json(client, path, version_json).await?
+        Err(json_path) => {
+            download_assets_json(client, json_path, version_json).await?
         }
     };
 
