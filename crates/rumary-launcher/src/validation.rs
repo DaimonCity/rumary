@@ -1,5 +1,4 @@
 use std::path::Path;
-use sha2::Sha256;
 
 struct ValidationService<P: AsRef<Path>> {
     check_list: Vec<P>,
