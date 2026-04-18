@@ -1,3 +1,5 @@
+use sha1::Sha1;
+use sha2::Sha256;
 use crate::i18n::Translator;
 use crate::result::UtilResult;
 use bytes::Bytes;
@@ -9,7 +11,9 @@ use std::error::Error;
 use std::ops::Deref;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use tokio::io::{AsyncWriteExt, BufWriter};
+use sha2::Digest;
+use tokio::fs::File;
+use tokio::io::{AsyncReadExt, AsyncWriteExt, BufReader, BufWriter};
 use tokio::task;
 
 pub fn t(trans: &Translator, key: &str) -> String {
@@ -117,4 +121,55 @@ pub async fn _save_json<P: AsRef<Path>, J: Serialize + Send + Sync + 'static>(
     save_file(json_path, &data).await?;
 
     Ok(())
+}
+
+pub enum HashAlgo {
+    Sha1,
+    Sha256,
+}
+
+pub async fn string_to_hash(string: &str) -> UtilResult<Vec<u8>> {
+    match hex::decode(string) {
+        Ok(bytes) => Ok(bytes),
+        Err(e) => Err(Box::new(e)),
+    }
+}
+
+pub async fn verify_file_hash<P, H>(
+    path: P,
+    expected_hash: H,
+    algo: HashAlgo
+) -> UtilResult<bool>
+where
+    P: AsRef<Path>,
+    H: AsRef<[u8]>,
+{
+    match algo {
+        HashAlgo::Sha1 => process_hash::<Sha1, _, _>(path, expected_hash).await,
+        HashAlgo::Sha256 => process_hash::<Sha256, _, _>(path, expected_hash).await,
+    }
+}
+
+async fn process_hash<D, P, H>(path: P, hash: H) -> UtilResult<bool>
+where
+    D: Digest + Default,
+    P: AsRef<Path>,
+    H: AsRef<[u8]>,
+{
+    let file = File::open(path).await?;
+    let mut reader = BufReader::new(file);
+    let mut hasher = D::new();
+    let mut buffer = [0; 8192];
+
+    loop {
+        let count = reader.read(&mut buffer).await?;
+        if count == 0 {
+            break;
+        }
+        hasher.update(&buffer[..count]);
+    }
+
+    let actual_hash = hasher.finalize();
+
+    Ok(actual_hash.as_slice() == hash.as_ref())
 }

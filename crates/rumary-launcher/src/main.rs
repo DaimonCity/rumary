@@ -6,6 +6,7 @@ mod ui;
 pub mod download;
 pub mod util;
 pub mod result;
+pub mod validation;
 
 use app::LauncherApp;
 
