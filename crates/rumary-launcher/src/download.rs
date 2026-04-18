@@ -3,7 +3,7 @@ use crate::models::{AssetJson, Library, Version, VersionJson, VersionManifest};
 use crate::util;
 use reqwest_middleware::ClientWithMiddleware;
 use std::error::Error;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::Arc;
 use tokio::fs;
 use tokio::fs::File;
@@ -34,11 +34,12 @@ impl AppState {
         let tx = self.channels.status.0.clone();
 
         let client_path = self.config.client_path.clone();
-        let libs_path = if let Some(s) = self.get_libraries_path() {
-            PathBuf::from(s)
-        } else {
+        let Some(ver) = self.get_selected_version_name() else {
             return;
         };
+
+        let libs_path = util::get_libraries_path(&client_path, &ver);
+        drop(ver);
 
         self.rt.spawn(async move {
             let version_json_path = util::version_json_path(client_path.as_str(), &version_json.id);
@@ -77,7 +78,6 @@ impl AppState {
 
     pub fn fetch_download_version_json(&self, version: Version) {
         let tx = self.channels.minecraft.0.clone();
-
         let f = async move {
             let client = reqwest::Client::new();
 
@@ -120,26 +120,34 @@ async fn download_libs_task<P: AsRef<Path>>(
     Ok(())
 }
 
-async fn download_minecraft_jar(
+async fn download_minecraft_jar<P: AsRef<Path>>(
     client: &ClientWithMiddleware,
-    client_path: &str,
+    client_path: P,
     version_json: &VersionJson,
 ) -> UtilResult<()> {
-    let url = &version_json.downloads.client.url;
-    let bytes = util::download_file(client, url).await?;
+    let client = client.clone();
+    let url = version_json.downloads.client.url.clone();
 
-    let local_path = Path::new(&client_path)
+    let local_path = client_path.as_ref()
         .join("versions")
         .join(&version_json.id);
 
-    if !local_path.exists() {
-        fs::create_dir_all(&local_path).await?;
+    let mut set = JoinSet::new();
+
+    set.spawn(async move {
+        if !local_path.exists() {
+            fs::create_dir_all(&local_path).await?;
+        }
+        let bytes = util::download_file(&client, url).await?;
+        let file_path = local_path.join("client.jar");
+        util::save_file(file_path, &bytes).await?;
+        Ok::<(), Box<dyn Error + Send + Sync>>(())
+    });
+
+    while let Some(res) = set.join_next().await {
+        res??; // Распаковываем результат выполнения и возможную ошибку внутри
     }
 
-    let file_path = local_path.join("client.jar");
-
-    let mut file = File::create(file_path).await?;
-    file.write_all(&bytes).await?;
     println!("minecraft jar finished");
 
     Ok(())
@@ -153,13 +161,22 @@ async fn download_assets_json<P: AsRef<Path>>(
     if let Some(parent) = file_path.as_ref().parent() {
         tokio::fs::create_dir_all(parent).await?;
     }
+    let mut set = JoinSet::new();
+    let url = version_json.asset_index.url.clone();
+    let client = client.clone();
+    let file_path = file_path.as_ref().to_path_buf();
 
-    let url = &version_json.asset_index.url;
-    let bytes = util::download_file(client, url).await?;
+    set.spawn(async move {
+        let bytes = util::download_file(&client, url).await?;
+        let json: Arc<AssetJson> = Arc::new(serde_json::from_slice(&bytes)?);
+        util::save_json(file_path, json).await?;
+        Ok::<(), Box<dyn Error + Send + Sync>>(())
+    });
 
-    let json: Arc<AssetJson> = Arc::new(serde_json::from_slice(&bytes)?);
+    while let Some(res) = set.join_next().await {
+        res??; // Распаковываем результат выполнения и возможную ошибку внутри
+    }
 
-    util::save_json(file_path, json).await?;
     println!("assets_json finished");
 
     Ok(())
@@ -192,7 +209,6 @@ async fn download_assets<P: AsRef<Path>>(
         .join("assets")
         .join(&version_json.id)
         .join("objects");
-    println!("{:?}", local_path);
 
     let mut set = JoinSet::new();
 

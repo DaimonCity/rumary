@@ -14,5 +14,7 @@
   "api_url": "API URL",
   "client_path": "Client Path:",
   "username": "Username:",
-  "selected_version_empty": "Select a version"
+  "selected_version_empty": "Select a version",
+  "get_versions": "Get versions",
+  "download_selected_version": "Download selected version"
 }

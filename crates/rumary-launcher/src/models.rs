@@ -35,26 +35,10 @@ pub struct Profile {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct FileEntry {
-    pub path: String,
-    pub hash: String,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct LaunchCommand {
     pub jvm_args: Vec<String>,
     pub main_class: String,
     pub game_args: HashMap<String, String>,
-    pub classpath: String,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct UpdateLaunchCommand {
-    pub jvm_args: Vec<String>,
-    pub jar_file: String,
-    pub main_class: String,
-    pub game_args: Vec<String>,
-    pub jar_dir: String,
     pub classpath: String,
 }
 

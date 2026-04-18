@@ -16,20 +16,36 @@ pub fn t(trans: &Translator, key: &str) -> String {
     trans.t(key)
 }
 
-pub fn asset_json_path<P: AsRef<Path>>(client_path: P, version: &str, asset_index: &str) -> PathBuf {
+pub fn asset_json_path<P: AsRef<Path>>(
+    client_path: P,
+    version: &str,
+    asset_index: &str,
+) -> PathBuf {
     client_path
         .as_ref()
         .join("assets")
-        .join(&version)
+        .join(version)
         .join("indexes")
         .join(format!("{}.json", asset_index))
+}
+
+pub fn get_libraries_path<P: AsRef<Path>>(client_path: P, version: &str) -> PathBuf {
+    client_path.as_ref().join("libraries").join(version)
 }
 
 pub fn version_json_path<P: AsRef<Path>>(client_path: P, version: &str) -> PathBuf {
     client_path
         .as_ref()
         .join("versions")
-        .join(&version)
+        .join(version)
+        .join("version.json")
+}
+
+pub fn minecraft_jar_path<P: AsRef<Path>>(client_path: P, version: &str) -> PathBuf {
+    client_path
+        .as_ref()
+        .join("versions")
+        .join(version)
         .join("client.jar")
 }
 
@@ -80,7 +96,7 @@ pub async fn save_json<P: AsRef<Path>, J: Serialize + Send + Sync + 'static>(
         let json = json.clone();
         move || serde_json::to_vec_pretty(json.deref())
     })
-        .await??;
+    .await??;
 
     save_file(json_path, &data).await?;
 
@@ -96,7 +112,7 @@ pub async fn _save_json<P: AsRef<Path>, J: Serialize + Send + Sync + 'static>(
         let json = json.clone();
         move || serde_json::to_vec_pretty(json.deref())
     })
-        .await??;
+    .await??;
 
     save_file(json_path, &data).await?;
 

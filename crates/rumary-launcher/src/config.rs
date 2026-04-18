@@ -11,6 +11,26 @@ pub struct LauncherConfig {
     pub uuid: String,
 }
 
+impl LauncherConfig {
+    fn _new(
+        version: u8,
+        client_path: String,
+        api_url: String,
+        username: String,
+        access_token: String,
+        uuid: String,
+    ) -> Self {
+        Self {
+            version,
+            client_path,
+            api_url,
+            username,
+            access_token,
+            uuid,
+        }
+    }
+}
+
 impl Default for LauncherConfig {
     fn default() -> Self {
         Self {
