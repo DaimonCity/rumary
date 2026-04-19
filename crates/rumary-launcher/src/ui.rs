@@ -86,7 +86,7 @@ impl AppState {
 
             let mut jars = Vec::new();
             let lib_path = Path::new(&root_path).join("libraries");
-            collect_jars(lib_path.as_path(), &mut jars);
+            util::collect_jars(lib_path.as_path(), &mut jars);
 
             let client_jar_path = PathBuf::from(&root_path)
                 .join("versions")
@@ -127,7 +127,6 @@ impl AppState {
             game_args.insert("uuid".into(), "00000000-0000-0000-0000-000000000000".into());
             game_args.insert("accessToken".into(), "1234567890abcdef".into());
             game_args.insert("gameDir".into(), game_dir);
-            game_args.insert("userType".into(), "msa".into());
             game_args.insert("versionType".into(), "release".into());
             game_args.insert("version".into(), version);
             game_args.insert("assetsDir".into(), assets_path);
@@ -213,21 +212,6 @@ impl AppState {
 
 }
 
-pub fn collect_jars(dir: &Path, jars: &mut Vec<String>) {
-    if let Ok(entries) = fs::read_dir(dir) {
-        for entry in entries.flatten() {
-            let path = entry.path();
-
-            if path.is_dir() {
-                collect_jars(&path, jars);
-            } else if let Some(ext) = path.extension()
-                && ext == "jar"
-            {
-                jars.push(path.to_string_lossy().to_string());
-            }
-        }
-    }
-}
 
 pub fn wire_callbacks(ui: &AppWindow, state: Rc<RefCell<AppState>>) {
     let weak = ui.as_weak();
@@ -481,6 +465,7 @@ fn set_selection_labels(ui: &AppWindow, state: &AppState) {
     ui.set_selected_version_name(version.into());
 }
 
+// Бесполезная функция в будущем
 fn select_previous_client(state: &mut AppState) {
     if state.clients.is_empty() {
         state.selected_client = None;
@@ -497,6 +482,7 @@ fn select_previous_client(state: &mut AppState) {
     state.fetch_profiles();
 }
 
+// Бесполезная функция в будущем
 fn select_next_client(state: &mut AppState) {
     if state.clients.is_empty() {
         state.selected_client = None;
@@ -513,6 +499,7 @@ fn select_next_client(state: &mut AppState) {
     state.fetch_profiles();
 }
 
+// Бесполезная функция в будущем
 fn select_previous_profile(state: &mut AppState) {
     if state.profiles.is_empty() {
         state.selected_profile = None;
@@ -526,6 +513,7 @@ fn select_previous_profile(state: &mut AppState) {
     state.selected_profile = Some(next);
 }
 
+// Бесполезная функция в будущем
 fn select_next_profile(state: &mut AppState) {
     if state.profiles.is_empty() {
         state.selected_profile = None;
@@ -539,6 +527,7 @@ fn select_next_profile(state: &mut AppState) {
     state.selected_profile = Some(next);
 }
 
+// Бесполезная функция в будущем
 fn select_previous_version(state: &mut AppState) {
     if state.versions.is_empty() {
         state.selected_version = None;
@@ -551,7 +540,7 @@ fn select_previous_version(state: &mut AppState) {
     };
     state.selected_version = Some(next);
 }
-
+// Бесполезная функция в будущем
 fn select_next_version(state: &mut AppState) {
     if state.versions.is_empty() {
         state.selected_version = None;

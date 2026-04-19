@@ -8,6 +8,7 @@ use reqwest_middleware::ClientWithMiddleware;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 use std::error::Error;
+use std::fs;
 use std::ops::Deref;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -38,10 +39,7 @@ pub fn get_libraries_path<P: AsRef<Path>>(client_path: P, version: &str) -> Path
 }
 
 pub fn version_json_path<P: AsRef<Path>>(client_path: P, version: &str) -> PathBuf {
-    client_path
-        .as_ref()
-        .join("versions")
-        .join(version)
+    versions_path(client_path, version)
         .join("version.json")
 }
 
@@ -50,7 +48,13 @@ pub fn minecraft_jar_path<P: AsRef<Path>>(root_path: P, version: &str) -> PathBu
         .as_ref()
         .join("versions")
         .join(version)
-        .join("client.jar")
+}
+
+pub fn versions_path<P: AsRef<Path>>(client_path: P, version: &str) -> PathBuf {
+    client_path
+        .as_ref()
+        .join("versions")
+        .join(version)
 }
 
 pub fn objects_path<P: AsRef<Path>>(root_path: P, version: &str) -> PathBuf {
@@ -131,6 +135,22 @@ pub async fn _save_json<P: AsRef<Path>, J: Serialize + Send + Sync + 'static>(
     Ok(())
 }
 
+pub fn collect_jars(dir: &Path, jars: &mut Vec<String>) {
+    if let Ok(entries) = fs::read_dir(dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+
+            if path.is_dir() {
+                collect_jars(&path, jars);
+            } else if let Some(ext) = path.extension()
+                && ext == "jar"
+            {
+                jars.push(path.to_string_lossy().to_string());
+            }
+        }
+    }
+}
+
 pub enum HashAlgo {
     Sha1,
     Sha256,
@@ -142,8 +162,6 @@ pub async fn string_to_hash(string: &str) -> UtilResult<Vec<u8>> {
         Err(e) => Err(Box::new(e)),
     }
 }
-
-
 
 pub async fn verify_file_hash<P, H>(
     path: P,

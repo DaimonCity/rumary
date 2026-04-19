@@ -29,8 +29,6 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/api/users/{user_id}/ban", post(ban_user))
         .route("/api/users/{user_id}/unban", post(unban_user))
         .route("/api/clients", post(create_client).get(list_clients))
-        .route("/api/clients/{client_id}", get(get_client))
-        .route("/api/clients/{client_id}/validate", post(validate_client))
         .route("/api/profiles", post(create_profile))
         .route("/api/profiles/{profile_id}", get(get_profile))
         .route(
@@ -132,20 +130,6 @@ async fn create_client(
 
 async fn list_clients(State(state): State<Arc<AppState>>) -> AppResult<Json<Vec<Client>>> {
     Ok(Json(state.list_clients().await?))
-}
-
-async fn get_client(
-    State(state): State<Arc<AppState>>,
-    Path(client_id): Path<Uuid>,
-) -> AppResult<Json<Client>> {
-    Ok(Json(state.get_client(client_id).await?))
-}
-
-async fn validate_client(
-    State(state): State<Arc<AppState>>,
-    Path(client_id): Path<Uuid>,
-) -> AppResult<Json<crate::models::ValidationReport>> {
-    Ok(Json(state.validate_client(client_id).await?))
 }
 
 async fn create_profile(

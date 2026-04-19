@@ -221,7 +221,7 @@ async fn download_assets<P: AsRef<Path>>(
 
     let mut set = JoinSet::new();
 
-    for (_key, res) in json.objects {  
+    for (_, res) in json.objects {
         let client = client.clone();
 
         let id = version_json.id.clone();
@@ -248,7 +248,7 @@ async fn download_assets<P: AsRef<Path>>(
     Ok(())
 }
 
-async fn download_asset<P: AsRef<Path>>(
+pub async fn download_asset<P: AsRef<Path>>(
     client: &ClientWithMiddleware,
     root_path: P,
     version: &str,
