@@ -1,20 +1,19 @@
 use crate::config::LauncherConfig;
 use crate::i18n::Translator;
 use crate::models::{
-    LaunchCommand, LauncherClient, Profile, Version, VersionJson,
-    VersionManifest,
+    LaunchCommand, LauncherClient, Profile, Version, VersionJson, VersionManifest,
 };
-use crate::ui::AppWindow;
+use crate::result::AppResult;
 use crate::ui;
+use crate::ui::AppWindow;
 use reqwest_middleware::{ClientBuilder, ClientWithMiddleware};
-use reqwest_retry::{policies::ExponentialBackoff, RetryTransientMiddleware};
+use reqwest_retry::{RetryTransientMiddleware, policies::ExponentialBackoff};
 use slint::ComponentHandle;
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::mpsc;
 use std::time::Duration;
 use tokio::runtime::Runtime;
-use crate::result::AppResult;
 
 pub struct AppChannels {
     // files: (mpsc::Sender<Vec<FileEntry>>, mpsc::Receiver<Vec<FileEntry>>),
@@ -96,7 +95,6 @@ impl AppState {
     pub(crate) fn save_config(&self) {
         let _ = confy::store("rumary-launcher", None, &self.config);
     }
-
 }
 
 pub struct LauncherApp {
@@ -141,4 +139,3 @@ impl LauncherApp {
         self.ui.run()
     }
 }
-

@@ -1,5 +1,6 @@
 use crate::download::{
-    download_asset, download_assets_json, download_minecraft_jar, get_assets_json, get_version_json,
+    download_asset, download_assets_json, download_lib, download_minecraft_jar, get_assets_json,
+    get_version_json,
 };
 use crate::models::{AssetJson, VersionJson};
 use crate::result::ValidationResult;
@@ -12,7 +13,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tokio::task::JoinSet;
 
-struct ValidationService {
+pub struct ValidationService {
     version_json: Arc<VersionJson>,
     assets_json: Arc<AssetJson>,
     reqwest_client: Arc<ClientWithMiddleware>,
@@ -20,7 +21,7 @@ struct ValidationService {
 }
 
 impl ValidationService {
-    async fn new<U: IntoUrl, P: AsRef<Path>>(
+    pub async fn new<U: IntoUrl, P: AsRef<Path>>(
         client: &ClientWithMiddleware,
         url: U,
         root_path: P,
@@ -39,8 +40,11 @@ impl ValidationService {
     pub async fn validate_version(&self) -> ValidationResult<()> {
         let client_task = self.validate_client();
         let assets_json_task = self.validate_assets_json();
+        let assets_task = self.validate_assets();
+        let libs_task = self.validate_libs();
 
-        let (client_res, assets_json_res) = tokio::join!(client_task, assets_json_task);
+        let (client_res, assets_json_res, assets_res, libs_res) =
+            tokio::join!(client_task, assets_json_task, assets_task, libs_task);
 
         if let Err(e) = client_res {
             eprintln!("{}", e);
@@ -50,12 +54,62 @@ impl ValidationService {
             eprintln!("{}", e);
         }
 
+        if let Err(e) = assets_res {
+            eprintln!("{}", e);
+        }
+        
+        if let Err(e) = libs_res {
+            eprintln!("{}", e);
+        }
+
         Ok(())
     }
 
-    pub async fn validate_libs() {}
+    pub async fn validate_libs(&self) -> ValidationResult<()> {
+        let version_json = self.version_json.clone();
+        let libraries = version_json.libraries.clone();
+        let id = version_json.id.clone();
+
+        let root_path = self.root_path.clone().deref().to_owned();
+        let libs_path = util::get_libraries_path(&root_path, &id);
+
+        let mut set = JoinSet::new();
+
+        for library in libraries {
+            let client = self.reqwest_client.clone();
+            let artifact = library.downloads.unwrap().artifact.unwrap();
+            let url = artifact.url;
+
+            let lib_path = artifact.path.unwrap();
+            let file_path = libs_path.join(&lib_path);
+
+            let hash = artifact.sha1;
+
+            set.spawn(async move {
+                if !util::verify_file_hash(&file_path, &hash, HashAlgo::Sha1)
+                    .await
+                    .unwrap_or(false)
+                {
+                    download_lib(&client, &file_path, &url).await?;
+                }
+                Ok::<(), Box<dyn std::error::Error + Send + Sync>>(())
+            });
+            if set.len() > 20
+                && let Some(res) = set.join_next().await
+            {
+                res??;
+            }
+        }
+
+        while let Some(res) = set.join_next().await {
+            res??; // Распаковываем результат выполнения и возможную ошибку внутри
+        }
+
+        Ok(())
+    }
 
     pub async fn validate_client(&self) -> ValidationResult<()> {
+        let client = self.reqwest_client.clone();
         let version_json = self.version_json.clone();
         let root_path = self.root_path.clone();
         let id = version_json.id.clone();
@@ -66,18 +120,14 @@ impl ValidationService {
             .await
             .unwrap_or(false)
         {
-            download_minecraft_jar(
-                &self.reqwest_client,
-                &root_path.deref(),
-                version_json.deref(),
-            )
-            .await?;
+            download_minecraft_jar(&client, &root_path.deref(), version_json.deref()).await?;
         }
 
         Ok(())
     }
 
     pub async fn validate_assets_json(&self) -> ValidationResult<()> {
+        let client = self.reqwest_client.clone();
         let version_json = self.version_json.clone();
         let root_path = self.root_path.clone();
         let id = version_json.id.clone();
@@ -89,12 +139,7 @@ impl ValidationService {
             .await
             .unwrap_or(false)
         {
-            download_assets_json(
-                &self.reqwest_client,
-                &root_path.deref(),
-                version_json.deref(),
-            )
-            .await?;
+            download_assets_json(&client, &root_path.deref(), version_json.deref()).await?;
         }
 
         Ok(())

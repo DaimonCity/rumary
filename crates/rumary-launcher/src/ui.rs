@@ -1,14 +1,12 @@
+use crate::app::AppState;
+use crate::models::{LaunchCommand, LauncherClient, Profile, Version, VersionManifest};
+use crate::util;
 use std::cell::RefCell;
 use std::collections::HashMap;
-use std::fs;
-use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::rc::Rc;
 use std::sync::Arc;
 use uuid::Uuid;
-use crate::app::AppState;
-use crate::models::{LaunchCommand, LauncherClient, Profile, Version, VersionManifest};
-use crate::util;
 
 slint::include_modules!();
 
@@ -42,8 +40,7 @@ impl AppState {
         let url = format!("{api_url}/profiles");
 
         self.rt.spawn(async move {
-            if let Ok(response) =
-                util::get_response(&reqwest_client, &url).await
+            if let Ok(response) = util::get_response(&reqwest_client, &url).await
                 && let Ok(profiles) = response.json::<Vec<Profile>>().await
             {
                 let _ = tx.send(profiles);
@@ -54,7 +51,7 @@ impl AppState {
     fn prelude_play(&self) {
         let tx = self.channels.read_json.0.clone();
 
-        let root_path = self.config.client_path.clone();
+        let root_path = self.config.root_path.clone();
         let version = self.get_version();
 
         self.rt.spawn(async move {
@@ -71,7 +68,7 @@ impl AppState {
     fn launch_game(&self) {
         let tx = self.channels.launch.0.clone();
 
-        let root_path = self.config.client_path.clone();
+        let root_path = self.config.root_path.clone();
         let version_json = self.get_version().unwrap().version_json.clone();
 
         if version_json.is_none() {
@@ -79,18 +76,17 @@ impl AppState {
             return;
         }
 
-        // self.fetch_download_version_json(self.versions[index].clone()); - для проверки валидности
+        // Тут можно просто проверку валидности вызывать, она сама скачет все недостающие файлы.
+        // При этом смежные библиотеку оставит, это даже лучше.
         self.rt.spawn(async move {
             let version_json = version_json.unwrap();
             let version = version_json.id.clone();
 
             let mut jars = Vec::new();
-            let lib_path = Path::new(&root_path).join("libraries");
+            let lib_path = util::get_libraries_path(&root_path, &version);
             util::collect_jars(lib_path.as_path(), &mut jars);
 
-            let client_jar_path = PathBuf::from(&root_path)
-                .join("versions")
-                .join(&version)
+            let client_jar_path = util::minecraft_jar_path(&root_path, &version)
                 .join("client.jar")
                 .to_string_lossy()
                 .to_string();
@@ -102,22 +98,12 @@ impl AppState {
 
             println!("classpath: {classpath}");
 
-            let assets_path = PathBuf::from(&root_path).join("assets").join(&version);
-            if !assets_path.as_path().exists()
-                && let Err(e) = fs::create_dir_all(&assets_path)
-            {
-                eprintln!("{e}");
-                return;
-            };
+            let assets_path = util::assets_path(&root_path, &version);
+            util::verify_path(assets_path.as_path()).await.unwrap();
             let assets_path = assets_path.as_path().to_string_lossy().to_string();
 
-            let game_dir = PathBuf::from(&root_path).join("profiles").join(&version);
-            if !game_dir.as_path().exists()
-                && let Err(e) = fs::create_dir_all(&game_dir)
-            {
-                eprintln!("{e}");
-                return;
-            };
+            let game_dir = util::game_path(&root_path, &version);
+            util::verify_path(game_dir.as_path()).await.unwrap();
             let game_dir = game_dir.as_path().to_string_lossy().to_string();
 
             let asset_index = version_json.asset_index.id;
@@ -143,11 +129,10 @@ impl AppState {
         });
     }
 
-
     fn run_game(&mut self, command: LaunchCommand) {
         self.status = util::t(&self.translator, "launching");
 
-        let root_path = &self.config.client_path;
+        let root_path = &self.config.root_path;
         let classpath = &command.classpath;
 
         let mut cmd = Command::new("java");
@@ -209,9 +194,7 @@ impl AppState {
             Some(0)
         };
     }
-
 }
-
 
 pub fn wire_callbacks(ui: &AppWindow, state: Rc<RefCell<AppState>>) {
     let weak = ui.as_weak();
@@ -358,7 +341,7 @@ pub fn wire_callbacks(ui: &AppWindow, state: Rc<RefCell<AppState>>) {
         if let Some(window) = weak.upgrade() {
             let mut state = state.borrow_mut();
             state.config.api_url = window.get_api_url().to_string();
-            state.config.client_path = window.get_client_path().to_string();
+            state.config.root_path = window.get_client_path().to_string();
             state.config.username = window.get_username().to_string();
             state.save_config();
             state.fetch_clients();
@@ -399,6 +382,13 @@ pub fn process_channels(ui: &AppWindow, state: &mut AppState) {
     while let Ok(minecraft) = state.channels.minecraft.1.try_recv() {
         //..тут нужна функция валидности нынешнего майна
         // например: let is_valid = validation(minecraft)
+        // let client = state.reqwest_client.clone();
+        // let root_path = state.config.root_path.clone();
+        // let selected_version = state.selected_version.unwrap_or(1);
+        //  let version_json_url = state.versions[selected_version].url;
+        //
+        // let validation = ValidationService::new(&client, "https://a.com", &root_path);
+
         let minecraft = Arc::new(minecraft);
         state.download_minecraft_version(minecraft.clone());
     }
@@ -437,7 +427,7 @@ pub fn set_common_ui_values(ui: &AppWindow, state: &AppState) {
 
     ui.set_status_text(state.status.clone().into());
     ui.set_api_url(state.config.api_url.clone().into());
-    ui.set_client_path(state.config.client_path.clone().into());
+    ui.set_client_path(state.config.root_path.clone().into());
     ui.set_username(state.config.username.clone().into());
     ui.set_settings_visible(state.show_settings);
 

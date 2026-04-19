@@ -1,18 +1,18 @@
-use sha1::Sha1;
-use sha2::Sha256;
 use crate::i18n::Translator;
 use crate::result::UtilResult;
 use bytes::Bytes;
 use reqwest::{IntoUrl, Response};
 use reqwest_middleware::ClientWithMiddleware;
-use serde::de::DeserializeOwned;
 use serde::Serialize;
+use serde::de::DeserializeOwned;
+use sha1::Sha1;
+use sha2::Digest;
+use sha2::Sha256;
 use std::error::Error;
 use std::fs;
 use std::ops::Deref;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use sha2::Digest;
 use tokio::fs::File;
 use tokio::io::{AsyncReadExt, AsyncWriteExt, BufReader, BufWriter};
 use tokio::task;
@@ -21,11 +21,7 @@ pub fn t(trans: &Translator, key: &str) -> String {
     trans.t(key)
 }
 
-pub fn assets_json_path<P: AsRef<Path>>(
-    root_path: P,
-    version: &str,
-    asset_index: &str,
-) -> PathBuf {
+pub fn assets_json_path<P: AsRef<Path>>(root_path: P, version: &str, asset_index: &str) -> PathBuf {
     root_path
         .as_ref()
         .join("assets")
@@ -34,27 +30,20 @@ pub fn assets_json_path<P: AsRef<Path>>(
         .join(format!("{}.json", asset_index))
 }
 
-pub fn get_libraries_path<P: AsRef<Path>>(client_path: P, version: &str) -> PathBuf {
-    client_path.as_ref().join("libraries").join(version)
+pub fn get_libraries_path<P: AsRef<Path>>(root_path: P, version: &str) -> PathBuf {
+    root_path.as_ref().join("libraries").join(version)
 }
 
-pub fn version_json_path<P: AsRef<Path>>(client_path: P, version: &str) -> PathBuf {
-    versions_path(client_path, version)
-        .join("version.json")
+pub fn version_json_path<P: AsRef<Path>>(root_path: P, version: &str) -> PathBuf {
+    versions_path(root_path, version).join("version.json")
 }
 
 pub fn minecraft_jar_path<P: AsRef<Path>>(root_path: P, version: &str) -> PathBuf {
-    root_path
-        .as_ref()
-        .join("versions")
-        .join(version)
+    root_path.as_ref().join("versions").join(version)
 }
 
-pub fn versions_path<P: AsRef<Path>>(client_path: P, version: &str) -> PathBuf {
-    client_path
-        .as_ref()
-        .join("versions")
-        .join(version)
+pub fn versions_path<P: AsRef<Path>>(root_path: P, version: &str) -> PathBuf {
+    root_path.as_ref().join("versions").join(version)
 }
 
 pub fn objects_path<P: AsRef<Path>>(root_path: P, version: &str) -> PathBuf {
@@ -63,6 +52,31 @@ pub fn objects_path<P: AsRef<Path>>(root_path: P, version: &str) -> PathBuf {
         .join("assets")
         .join(version)
         .join("objects")
+}
+
+pub fn assets_path<P: AsRef<Path>>(root_path: P, version: &str) -> PathBuf {
+    root_path
+        .as_ref()
+        .join("assets")
+        .join(version)
+}
+
+pub fn game_path<P: AsRef<Path>>(root_path: P, version: &str) -> PathBuf {
+    root_path
+        .as_ref()
+        .join("profiles")
+        .join(version)
+}
+
+pub async fn verify_path<P: AsRef<Path>>(path: P) -> UtilResult<()> {
+    let path = path.as_ref();
+    if !path.exists()
+        && let Err(e) = fs::create_dir_all(path)
+    {
+        eprintln!("{e}");
+    };
+    
+    Ok(())
 }
 
 pub async fn download_file<U: IntoUrl>(client: &ClientWithMiddleware, url: U) -> UtilResult<Bytes> {
@@ -163,11 +177,7 @@ pub async fn string_to_hash(string: &str) -> UtilResult<Vec<u8>> {
     }
 }
 
-pub async fn verify_file_hash<P, H>(
-    path: P,
-    expected_hash: H,
-    algo: HashAlgo
-) -> UtilResult<bool>
+pub async fn verify_file_hash<P, H>(path: P, expected_hash: H, algo: HashAlgo) -> UtilResult<bool>
 where
     P: AsRef<Path>,
     H: ToString,

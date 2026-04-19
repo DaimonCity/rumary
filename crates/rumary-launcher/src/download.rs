@@ -8,8 +8,6 @@ use std::error::Error;
 use std::path::Path;
 use std::sync::Arc;
 use tokio::fs;
-use tokio::fs::File;
-use tokio::io::AsyncWriteExt;
 use tokio::task::JoinSet;
 
 const MANIFEST_URL: &str = "https://launchermeta.mojang.com/mc/game/version_manifest.json";
@@ -35,22 +33,22 @@ impl AppState {
         self.status = util::t(&self.translator, "downloading_version");
         let tx = self.channels.status.0.clone();
 
-        let client_path = self.config.client_path.clone();
+        let root_path = self.config.root_path.clone();
         let Some(ver) = self.get_selected_version_name() else {
             return;
         };
 
-        let libs_path = util::get_libraries_path(&client_path, &ver);
+        let libs_path = util::get_libraries_path(&root_path, &ver);
         drop(ver);
 
         self.rt.spawn(async move {
-            let version_json_path = util::version_json_path(client_path.as_str(), &version_json.id);
+            let version_json_path = util::version_json_path(root_path.as_str(), &version_json.id);
 
             let libs = version_json.libraries.clone();
 
-            let assets_task = download_assets(&reqwest_client, &client_path, &version_json);
+            let assets_task = download_assets(&reqwest_client, &root_path, &version_json);
             let libs_task = download_libs_task(&reqwest_client, libs_path, libs);
-            let mc_task = download_minecraft_jar(&reqwest_client, &client_path, &version_json);
+            let mc_task = download_minecraft_jar(&reqwest_client, &root_path, &version_json);
             let version_json_save_task = util::save_json(version_json_path, version_json.clone());
 
             let (mc_res, lib_res, assets_res, version_json_save_res) =
@@ -119,19 +117,22 @@ async fn download_libs_task<P: AsRef<Path>>(
         let artifact = lib.downloads.unwrap().artifact.unwrap();
         let url = artifact.url;
         let lib_path = artifact.path.unwrap();
-
-        let bytes = util::download_file(client, &url).await?;
-
         let full_path = root_lib_path.as_ref().join(&lib_path);
 
-        if let Some(parent) = full_path.parent() {
-            fs::create_dir_all(parent).await?;
-        }
-
-        let mut file = File::create(full_path).await?;
-        file.write_all(&bytes).await?;
+        download_lib(client, &full_path, &url).await?;
     }
     println!("libs finished");
+
+    Ok(())
+}
+
+pub async fn download_lib<U: IntoUrl, P: AsRef<Path>>(
+    client: &ClientWithMiddleware,
+    lib_path: P,
+    url: U,
+) -> UtilResult<()> {
+    let bytes = util::download_file(client, url).await?;
+    util::save_file(lib_path, &bytes).await?;
 
     Ok(())
 }

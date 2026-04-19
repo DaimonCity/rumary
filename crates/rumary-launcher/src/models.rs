@@ -14,7 +14,7 @@ pub struct Version {
     pub id: Uuid,
     pub name: String,
     pub url: String,
-    pub version_json: Option<VersionJson>
+    pub version_json: Option<VersionJson>,
 }
 
 #[derive(Serialize, Deserialize)]
