@@ -20,12 +20,12 @@ pub fn t(trans: &Translator, key: &str) -> String {
     trans.t(key)
 }
 
-pub fn asset_json_path<P: AsRef<Path>>(
-    client_path: P,
+pub fn assets_json_path<P: AsRef<Path>>(
+    root_path: P,
     version: &str,
     asset_index: &str,
 ) -> PathBuf {
-    client_path
+    root_path
         .as_ref()
         .join("assets")
         .join(version)
@@ -45,12 +45,20 @@ pub fn version_json_path<P: AsRef<Path>>(client_path: P, version: &str) -> PathB
         .join("version.json")
 }
 
-pub fn minecraft_jar_path<P: AsRef<Path>>(client_path: P, version: &str) -> PathBuf {
-    client_path
+pub fn minecraft_jar_path<P: AsRef<Path>>(root_path: P, version: &str) -> PathBuf {
+    root_path
         .as_ref()
         .join("versions")
         .join(version)
         .join("client.jar")
+}
+
+pub fn objects_path<P: AsRef<Path>>(root_path: P, version: &str) -> PathBuf {
+    root_path
+        .as_ref()
+        .join("assets")
+        .join(version)
+        .join("objects")
 }
 
 pub async fn download_file<U: IntoUrl>(client: &ClientWithMiddleware, url: U) -> UtilResult<Bytes> {
@@ -135,6 +143,8 @@ pub async fn string_to_hash(string: &str) -> UtilResult<Vec<u8>> {
     }
 }
 
+
+
 pub async fn verify_file_hash<P, H>(
     path: P,
     expected_hash: H,
@@ -142,11 +152,17 @@ pub async fn verify_file_hash<P, H>(
 ) -> UtilResult<bool>
 where
     P: AsRef<Path>,
-    H: AsRef<[u8]>,
+    H: ToString,
 {
+    let hash = string_to_hash(&expected_hash.to_string()).await?;
+
+    if !path.as_ref().exists() {
+        return Ok(false);
+    }
+
     match algo {
-        HashAlgo::Sha1 => process_hash::<Sha1, _, _>(path, expected_hash).await,
-        HashAlgo::Sha256 => process_hash::<Sha256, _, _>(path, expected_hash).await,
+        HashAlgo::Sha1 => process_hash::<Sha1, _, _>(path, hash).await,
+        HashAlgo::Sha256 => process_hash::<Sha256, _, _>(path, hash).await,
     }
 }
 

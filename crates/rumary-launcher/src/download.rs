@@ -1,6 +1,8 @@
 use crate::app::AppState;
 use crate::models::{AssetJson, Library, Version, VersionJson, VersionManifest};
+use crate::result::UtilResult;
 use crate::util;
+use reqwest::IntoUrl;
 use reqwest_middleware::ClientWithMiddleware;
 use std::error::Error;
 use std::path::Path;
@@ -9,9 +11,9 @@ use tokio::fs;
 use tokio::fs::File;
 use tokio::io::AsyncWriteExt;
 use tokio::task::JoinSet;
-use crate::result::UtilResult;
 
 const MANIFEST_URL: &str = "https://launchermeta.mojang.com/mc/game/version_manifest.json";
+const RESOURCES_URL: &str = "https://resources.download.minecraft.net";
 
 impl AppState {
     pub fn download_manifest(&self) {
@@ -51,19 +53,16 @@ impl AppState {
             let mc_task = download_minecraft_jar(&reqwest_client, &client_path, &version_json);
             let version_json_save_task = util::save_json(version_json_path, version_json.clone());
 
-
-
-            let (mc_res, lib_res, assets_res, version_json_save_res) = tokio::join!(mc_task, libs_task, assets_task, version_json_save_task);
+            let (mc_res, lib_res, assets_res, version_json_save_res) =
+                tokio::join!(mc_task, libs_task, assets_task, version_json_save_task);
 
             if let Err(e) = mc_res {
                 eprintln!("minecraft_task  error: {e}");
-
             }
             if let Err(e) = lib_res {
                 eprintln!("libs_task  error: {e}");
             }
             if let Err(e) = assets_res {
-
                 eprintln!("assets_task error: {e}");
             }
 
@@ -73,14 +72,13 @@ impl AppState {
 
             let _ = tx.send("Version downloaded!".to_string());
         });
-
     }
 
     pub fn fetch_download_version_json(&self, version: Version) {
         let tx = self.channels.minecraft.0.clone();
-        let f = async move {
-            let client = reqwest::Client::new();
+        let client = self.reqwest_client.clone();
 
+        let f = async move {
             let response = client.get(&version.url).send().await;
 
             if let Ok(response) = response
@@ -92,6 +90,24 @@ impl AppState {
 
         self.rt.spawn(f);
     }
+}
+
+pub async fn get_version_json<U: IntoUrl>(
+    client: &ClientWithMiddleware,
+    url: U,
+) -> UtilResult<VersionJson> {
+    let response = util::get_response(client, url).await?;
+    let version_json: VersionJson = response.json().await?;
+    Ok(version_json)
+}
+
+pub async fn get_assets_json<U: IntoUrl>(
+    client: &ClientWithMiddleware,
+    url: U,
+) -> UtilResult<AssetJson> {
+    let response = util::get_response(client, url).await?;
+    let assets_json: AssetJson = response.json().await?;
+    Ok(assets_json)
 }
 
 async fn download_libs_task<P: AsRef<Path>>(
@@ -120,7 +136,7 @@ async fn download_libs_task<P: AsRef<Path>>(
     Ok(())
 }
 
-async fn download_minecraft_jar<P: AsRef<Path>>(
+pub async fn download_minecraft_jar<P: AsRef<Path>>(
     client: &ClientWithMiddleware,
     client_path: P,
     version_json: &VersionJson,
@@ -128,9 +144,7 @@ async fn download_minecraft_jar<P: AsRef<Path>>(
     let client = client.clone();
     let url = version_json.downloads.client.url.clone();
 
-    let local_path = client_path.as_ref()
-        .join("versions")
-        .join(&version_json.id);
+    let local_path = client_path.as_ref().join("versions").join(&version_json.id);
 
     let mut set = JoinSet::new();
 
@@ -153,7 +167,7 @@ async fn download_minecraft_jar<P: AsRef<Path>>(
     Ok(())
 }
 
-async fn download_assets_json<P: AsRef<Path>>(
+pub async fn download_assets_json<P: AsRef<Path>>(
     client: &ClientWithMiddleware,
     file_path: P,
     version_json: &VersionJson,
@@ -184,16 +198,16 @@ async fn download_assets_json<P: AsRef<Path>>(
 
 async fn download_assets<P: AsRef<Path>>(
     client: &ClientWithMiddleware,
-    client_path: P,
+    root_path: P,
     version_json: &VersionJson,
 ) -> UtilResult<()> {
-    let path = util::asset_json_path(client_path.as_ref(), &version_json.id,  &version_json.asset_index.id);
+    let path = util::assets_json_path(
+        root_path.as_ref(),
+        &version_json.id,
+        &version_json.asset_index.id,
+    );
 
-    for _ in 0..3 {
-        if path.exists() {
-            break;
-        }
-
+    if !path.exists() {
         download_assets_json(client, &path, version_json).await?;
     }
 
@@ -205,27 +219,23 @@ async fn download_assets<P: AsRef<Path>>(
 
     let json: AssetJson = util::read_json(path).await?;
 
-    let local_path = client_path.as_ref()
-        .join("assets")
-        .join(&version_json.id)
-        .join("objects");
-
     let mut set = JoinSet::new();
 
-    for (_key, res) in json.objects {
-        let dir_name = &res.hash[0..2];
-        let url = format!("https://resources.download.minecraft.net/{}/{}", dir_name, res.hash);
-
-        let file_path = local_path.join(dir_name).join(&res.hash);
+    for (_key, res) in json.objects {  
         let client = client.clone();
 
+        let id = version_json.id.clone();
+        let root_path = root_path.as_ref().to_path_buf();
+        let hash = res.hash.clone();
+
         set.spawn(async move {
-            let bytes = util::download_file(&client, &url).await?;
-            util::save_file(file_path, bytes.as_ref()).await?;
+            download_asset(&client, root_path, &id, &hash).await?;
             Ok::<(), Box<dyn Error + Send + Sync>>(())
         });
 
-        if set.len() > 20 && let Some(res) = set.join_next().await {
+        if set.len() > 20
+            && let Some(res) = set.join_next().await
+        {
             res??;
         }
     }
@@ -238,4 +248,22 @@ async fn download_assets<P: AsRef<Path>>(
     Ok(())
 }
 
+async fn download_asset<P: AsRef<Path>>(
+    client: &ClientWithMiddleware,
+    root_path: P,
+    version: &str,
+    hash: &str,
+) -> UtilResult<()> {
+    let client = client.clone();
 
+    let dir_name = &hash[0..2];
+    let local_path = util::objects_path(root_path, version);
+    let file_path = local_path.join(dir_name).join(hash);
+
+    let url = format!("{}/{}/{}", RESOURCES_URL, dir_name, hash);
+
+    let bytes = util::download_file(&client, &url).await?;
+    util::save_file(file_path, bytes.as_ref()).await?;
+
+    Ok(())
+}
