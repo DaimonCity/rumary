@@ -78,7 +78,10 @@ impl AppState {
         // Тут можно просто проверку валидности вызывать, она сама скачет все недостающие файлы.
         // При этом смежные библиотеку оставит, это даже лучше.
         self.rt.spawn(async move {
-            if validation_service.validate_version().await.unwrap_or(false) {
+            if validation_service.validate_version().await.unwrap_or_else(|e| {
+                eprintln!("validate checking has found error: {e}");
+                false
+            }) {
                 let version_json = validation_service.version_json.clone();
                 let version = version_json.id.clone();
 
