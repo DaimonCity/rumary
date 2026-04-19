@@ -10,8 +10,9 @@ pub mod validation;
 
 use app::LauncherApp;
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let app = LauncherApp::new()?;
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let app = LauncherApp::new().await?;
     app.run()?;
     Ok(())
 }

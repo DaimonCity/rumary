@@ -14,7 +14,7 @@ use std::sync::Arc;
 use tokio::task::JoinSet;
 
 pub struct ValidationService {
-    version_json: Arc<VersionJson>,
+    pub version_json: Arc<VersionJson>,
     assets_json: Arc<AssetJson>,
     reqwest_client: Arc<ClientWithMiddleware>,
     root_path: Arc<PathBuf>,
@@ -37,7 +37,7 @@ impl ValidationService {
         })
     }
 
-    pub async fn validate_version(&self) -> ValidationResult<()> {
+    pub async fn validate_version(&self) -> ValidationResult<bool> {
         let client_task = self.validate_client();
         let assets_json_task = self.validate_assets_json();
         let assets_task = self.validate_assets();
@@ -47,25 +47,29 @@ impl ValidationService {
             tokio::join!(client_task, assets_json_task, assets_task, libs_task);
 
         if let Err(e) = client_res {
-            eprintln!("{}", e);
+            eprintln!("client_res error: {}", e);
+            return Err(e);
         }
 
         if let Err(e) = assets_json_res {
-            eprintln!("{}", e);
+            eprintln!("assets_json_res error: {}", e);
+            return Err(e);
         }
 
         if let Err(e) = assets_res {
-            eprintln!("{}", e);
-        }
-        
-        if let Err(e) = libs_res {
-            eprintln!("{}", e);
+            eprintln!("assets_res error: {}", e);
+            return Err(e);
         }
 
-        Ok(())
+        if let Err(e) = libs_res {
+            eprintln!("libs_res error: {}", e);
+            return Err(e);
+        }
+
+        Ok(true)
     }
 
-    pub async fn validate_libs(&self) -> ValidationResult<()> {
+    async fn validate_libs(&self) -> ValidationResult<()> {
         let version_json = self.version_json.clone();
         let libraries = version_json.libraries.clone();
         let id = version_json.id.clone();
@@ -108,7 +112,7 @@ impl ValidationService {
         Ok(())
     }
 
-    pub async fn validate_client(&self) -> ValidationResult<()> {
+    async fn validate_client(&self) -> ValidationResult<()> {
         let client = self.reqwest_client.clone();
         let version_json = self.version_json.clone();
         let root_path = self.root_path.clone();
@@ -126,7 +130,7 @@ impl ValidationService {
         Ok(())
     }
 
-    pub async fn validate_assets_json(&self) -> ValidationResult<()> {
+    async fn validate_assets_json(&self) -> ValidationResult<()> {
         let client = self.reqwest_client.clone();
         let version_json = self.version_json.clone();
         let root_path = self.root_path.clone();
@@ -135,17 +139,17 @@ impl ValidationService {
         let assets_json_path = util::assets_json_path(root_path.deref(), &id, &asset_index);
         let sha1 = version_json.asset_index.sha1.clone();
 
-        if !util::verify_file_hash(assets_json_path, sha1, HashAlgo::Sha1)
+        if !util::verify_file_hash(&assets_json_path, sha1, HashAlgo::Sha1)
             .await
             .unwrap_or(false)
         {
-            download_assets_json(&client, &root_path.deref(), version_json.deref()).await?;
+            download_assets_json(&client, &assets_json_path, version_json.deref()).await?;
         }
 
         Ok(())
     }
 
-    pub async fn validate_assets(&self) -> ValidationResult<()> {
+    async fn validate_assets(&self) -> ValidationResult<()> {
         let client = self.reqwest_client.clone();
 
         let version_json = self.version_json.clone();

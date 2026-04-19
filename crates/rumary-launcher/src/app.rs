@@ -1,15 +1,19 @@
 use crate::config::LauncherConfig;
+use crate::download::MANIFEST_URL;
 use crate::i18n::Translator;
 use crate::models::{
-    LaunchCommand, LauncherClient, Profile, Version, VersionJson, VersionManifest,
+    LaunchCommand, LauncherClient, Profile, LauncherVersion, VersionJson, VersionManifest,
 };
 use crate::result::AppResult;
-use crate::ui;
 use crate::ui::AppWindow;
+use crate::validation::ValidationService;
+use crate::{ui, util};
+use reqwest::IntoUrl;
 use reqwest_middleware::{ClientBuilder, ClientWithMiddleware};
 use reqwest_retry::{RetryTransientMiddleware, policies::ExponentialBackoff};
 use slint::ComponentHandle;
 use std::cell::RefCell;
+use std::error::Error;
 use std::rc::Rc;
 use std::sync::mpsc;
 use std::time::Duration;
@@ -28,7 +32,7 @@ pub struct AppChannels {
     pub profiles: (mpsc::Sender<Vec<Profile>>, mpsc::Receiver<Vec<Profile>>),
     pub launch: (mpsc::Sender<LaunchCommand>, mpsc::Receiver<LaunchCommand>),
     pub minecraft: (mpsc::Sender<VersionJson>, mpsc::Receiver<VersionJson>),
-    pub read_json: (mpsc::Sender<VersionJson>, mpsc::Receiver<VersionJson>),
+    pub validation_service: (mpsc::Sender<ValidationService>, mpsc::Receiver<ValidationService>),
     pub status: (mpsc::Sender<String>, mpsc::Receiver<String>),
 }
 
@@ -38,7 +42,7 @@ pub struct AppState {
     pub show_settings: bool,
     pub clients: Vec<LauncherClient>,
     pub profiles: Vec<Profile>,
-    pub versions: Vec<Version>,
+    pub versions: Vec<LauncherVersion>,
     pub selected_client: Option<usize>,
     pub selected_profile: Option<usize>,
     pub selected_version: Option<usize>,
@@ -75,7 +79,7 @@ impl AppState {
                 manifest: mpsc::channel(),
                 minecraft: mpsc::channel(),
                 launch: mpsc::channel(),
-                read_json: mpsc::channel(),
+                validation_service: mpsc::channel(),
                 status: mpsc::channel(),
             },
             reqwest_client,
@@ -87,13 +91,27 @@ impl AppState {
         Some(self.versions[index].name.clone())
     }
 
-    pub(crate) fn get_version(&self) -> Option<Version> {
+    pub(crate) fn get_version(&self) -> Option<LauncherVersion> {
         let index = self.selected_version?;
         Some(self.versions[index].clone())
     }
 
     pub(crate) fn save_config(&self) {
         let _ = confy::store("rumary-launcher", None, &self.config);
+    }
+
+    pub(crate) async fn get_version_url(reqwest_client: &ClientWithMiddleware, version_id: &str) -> Result<impl IntoUrl, Box<dyn Error + Send + Sync>> {
+        let manifest = Self::get_manifest(reqwest_client).await?;
+        let version = manifest.get_version(version_id).await?;
+        let url = version.url.clone();
+        Ok(url)
+    }
+
+    async fn get_manifest(reqwest_client: &ClientWithMiddleware) -> Result<VersionManifest, Box<dyn Error + Send + Sync>> {
+        Ok(util::get_response(reqwest_client, MANIFEST_URL)
+            .await?
+            .json::<VersionManifest>()
+            .await?)
     }
 }
 
@@ -103,7 +121,7 @@ pub struct LauncherApp {
 }
 
 impl LauncherApp {
-    pub fn new() -> AppResult<Self> {
+    pub async fn new() -> AppResult<Self> {
         let ui = AppWindow::new()?;
         let state = Rc::new(RefCell::new(AppState::new()?));
 

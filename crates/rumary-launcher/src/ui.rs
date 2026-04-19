@@ -1,6 +1,9 @@
 use crate::app::AppState;
-use crate::models::{LaunchCommand, LauncherClient, Profile, Version, VersionManifest};
+use crate::models::{
+    LaunchCommand, LauncherClient, LauncherVersion, Profile, VersionManifest,
+};
 use crate::util;
+use crate::validation::ValidationService;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::process::Command;
@@ -49,83 +52,83 @@ impl AppState {
     }
 
     fn prelude_play(&self) {
-        let tx = self.channels.read_json.0.clone();
+        let tx = self.channels.validation_service.0.clone();
+        let id = self.get_selected_version_name().clone();
 
+        let client = self.reqwest_client.clone();
         let root_path = self.config.root_path.clone();
-        let version = self.get_version();
 
         self.rt.spawn(async move {
-            if let Some(v) = version {
-                let version = util::version_json_path(&root_path, &v.name);
+            if let Some(id) = id {
+                let url = Self::get_version_url(&client, &id).await.unwrap();
+                let validation_service = ValidationService::new(&client, url, &root_path).await;
 
-                if let Ok(j) = util::read_json(version).await {
-                    let _ = tx.send(j);
+                if let Ok(v) = validation_service {
+                    let _ = tx.send(v);
                 }
             }
         });
     }
 
-    fn launch_game(&self) {
+    fn launch_game(&self, validation_service: ValidationService) {
         let tx = self.channels.launch.0.clone();
 
         let root_path = self.config.root_path.clone();
-        let version_json = self.get_version().unwrap().version_json.clone();
-
-        if version_json.is_none() {
-            println!("version_json is none");
-            return;
-        }
 
         // Тут можно просто проверку валидности вызывать, она сама скачет все недостающие файлы.
         // При этом смежные библиотеку оставит, это даже лучше.
         self.rt.spawn(async move {
-            let version_json = version_json.unwrap();
-            let version = version_json.id.clone();
+            if validation_service.validate_version().await.unwrap_or(false) {
+                let version_json = validation_service.version_json.clone();
+                let version = version_json.id.clone();
 
-            let mut jars = Vec::new();
-            let lib_path = util::get_libraries_path(&root_path, &version);
-            util::collect_jars(lib_path.as_path(), &mut jars);
+                let mut jars = Vec::new();
+                let lib_path = util::get_libraries_path(&root_path, &version);
+                util::collect_jars(lib_path.as_path(), &mut jars);
 
-            let client_jar_path = util::minecraft_jar_path(&root_path, &version)
-                .join("client.jar")
-                .to_string_lossy()
-                .to_string();
+                let client_jar_path = util::minecraft_jar_path(&root_path, &version)
+                    .join("client.jar")
+                    .to_string_lossy()
+                    .to_string();
 
-            let sep = if cfg!(windows) { ";" } else { ":" };
-            jars.push(client_jar_path);
+                let sep = if cfg!(windows) { ";" } else { ":" };
+                jars.push(client_jar_path);
 
-            let classpath = jars.join(sep);
+                let classpath = jars.join(sep);
 
-            println!("classpath: {classpath}");
+                println!("classpath: {classpath}");
 
-            let assets_path = util::assets_path(&root_path, &version);
-            util::verify_path(assets_path.as_path()).await.unwrap();
-            let assets_path = assets_path.as_path().to_string_lossy().to_string();
+                let assets_path = util::assets_path(&root_path, &version);
+                util::verify_path(assets_path.as_path()).await.unwrap();
 
-            let game_dir = util::game_path(&root_path, &version);
-            util::verify_path(game_dir.as_path()).await.unwrap();
-            let game_dir = game_dir.as_path().to_string_lossy().to_string();
+                let assets_path = assets_path.as_path().to_string_lossy().to_string();
 
-            let asset_index = version_json.asset_index.id;
+                let game_dir = util::game_path(&root_path, &version);
+                util::verify_path(game_dir.as_path()).await.unwrap();
 
-            let mut game_args: HashMap<String, String> = HashMap::new();
-            game_args.insert("username".into(), "Daimon".into());
-            game_args.insert("uuid".into(), "00000000-0000-0000-0000-000000000000".into());
-            game_args.insert("accessToken".into(), "1234567890abcdef".into());
-            game_args.insert("gameDir".into(), game_dir);
-            game_args.insert("versionType".into(), "release".into());
-            game_args.insert("version".into(), version);
-            game_args.insert("assetsDir".into(), assets_path);
-            game_args.insert("assetIndex".into(), asset_index);
+                let game_dir = game_dir.as_path().to_string_lossy().to_string();
 
-            let command = LaunchCommand {
-                main_class: version_json.main_class,
-                jvm_args: vec!["-Xmx2G".into()],
-                game_args,
-                classpath,
-            };
+                let asset_index = version_json.asset_index.id.clone();
 
-            let _ = tx.send(command);
+                let mut game_args: HashMap<String, String> = HashMap::new();
+                game_args.insert("username".into(), "Daimon".into());
+                game_args.insert("uuid".into(), "00000000-0000-0000-0000-000000000000".into());
+                game_args.insert("accessToken".into(), "1234567890abcdef".into());
+                game_args.insert("gameDir".into(), game_dir);
+                game_args.insert("versionType".into(), "release".into());
+                game_args.insert("version".into(), version);
+                game_args.insert("assetsDir".into(), assets_path);
+                game_args.insert("assetIndex".into(), asset_index);
+
+                let command = LaunchCommand {
+                    main_class: version_json.main_class.clone(),
+                    jvm_args: vec!["-Xmx2G".into()],
+                    game_args,
+                    classpath,
+                };
+
+                let _ = tx.send(command);
+            }
         });
     }
 
@@ -163,30 +166,19 @@ impl AppState {
 
     fn apply_manifest(&mut self, manifest: VersionManifest) {
         self.versions.clear();
-        if let Some(versions) = manifest.versions.as_array() {
-            for version in versions {
-                if let Some(object) = version.as_object() {
-                    let name = object
-                        .get("id")
-                        .and_then(|value| value.as_str())
-                        .unwrap_or_default()
-                        .to_string();
-                    let url = object
-                        .get("url")
-                        .and_then(|value| value.as_str())
-                        .unwrap_or_default()
-                        .to_string();
+        let versions = manifest.versions;
+        for version in versions {
+            let name = version.id;
+            let url = version.url;
 
-                    let ver = Version {
-                        id: Uuid::new_v4(),
-                        name,
-                        url,
-                        version_json: None,
-                    };
+            let launcher_version = LauncherVersion {
+                id: Uuid::new_v4(),
+                name,
+                url,
+                version_json: None,
+            };
 
-                    self.versions.push(ver);
-                }
-            }
+            self.versions.push(launcher_version);
         }
         self.selected_version = if self.versions.is_empty() {
             None
@@ -393,15 +385,11 @@ pub fn process_channels(ui: &AppWindow, state: &mut AppState) {
         state.download_minecraft_version(minecraft.clone());
     }
 
-    while let Ok(read_json) = state.channels.read_json.1.try_recv() {
+    while let Ok(service) = state.channels.validation_service.1.try_recv() {
         if state.get_version().is_none() {
             break;
         }
-
-        if let Some(index) = state.selected_version {
-            state.versions[index].version_json = Some(read_json);
-            state.launch_game();
-        }
+        state.launch_game(service);
     }
     while let Ok(status) = state.channels.status.1.try_recv() {
         state.status = status;

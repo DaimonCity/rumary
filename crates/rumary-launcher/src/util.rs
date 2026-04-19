@@ -71,7 +71,7 @@ pub fn game_path<P: AsRef<Path>>(root_path: P, version: &str) -> PathBuf {
 pub async fn verify_path<P: AsRef<Path>>(path: P) -> UtilResult<()> {
     let path = path.as_ref();
     if !path.exists()
-        && let Err(e) = fs::create_dir_all(path)
+        && let Err(e) = tokio::fs::create_dir_all(path).await
     {
         eprintln!("{e}");
     };

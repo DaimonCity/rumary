@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
 use std::collections::HashMap;
+use std::error::Error;
 use uuid::Uuid;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -10,7 +10,7 @@ pub struct LauncherClient {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct Version {
+pub struct LauncherVersion {
     pub id: Uuid,
     pub name: String,
     pub url: String,
@@ -44,8 +44,37 @@ pub struct LaunchCommand {
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct VersionManifest {
-    pub latest: Value,
-    pub versions: Value,
+    pub latest: Latest,
+    pub versions: Vec<Version>,
+}
+
+impl VersionManifest {
+    pub async fn get_version(&self, id: &str) -> Result<Version, Box<dyn Error + Send + Sync>> {
+        let versions = &self.versions;
+        let version = versions
+            .iter()
+            .find(|v| v.id == id)
+            .ok_or("version not found")?
+            .clone();
+        Ok(version)
+    }
+}
+
+#[derive(Deserialize, Serialize, Debug, Clone)]
+pub struct Latest {
+    pub release: String,
+    pub snapshot: String,
+}
+
+#[derive(Deserialize, Serialize, Debug, Clone)]
+pub struct Version {
+    pub id: String,
+    #[serde(rename = "type")]
+    pub _type: String,
+    pub url: String,
+    pub time: String,
+    #[serde(rename = "releaseTime")]
+    pub release_time: String,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]

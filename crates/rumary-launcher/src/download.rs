@@ -1,5 +1,5 @@
 use crate::app::AppState;
-use crate::models::{AssetJson, Library, Version, VersionJson, VersionManifest};
+use crate::models::{AssetJson, Library, LauncherVersion, VersionJson, VersionManifest};
 use crate::result::UtilResult;
 use crate::util;
 use reqwest::IntoUrl;
@@ -10,7 +10,7 @@ use std::sync::Arc;
 use tokio::fs;
 use tokio::task::JoinSet;
 
-const MANIFEST_URL: &str = "https://launchermeta.mojang.com/mc/game/version_manifest.json";
+pub const MANIFEST_URL: &str = "https://launchermeta.mojang.com/mc/game/version_manifest.json";
 const RESOURCES_URL: &str = "https://resources.download.minecraft.net";
 
 impl AppState {
@@ -72,7 +72,7 @@ impl AppState {
         });
     }
 
-    pub fn fetch_download_version_json(&self, version: Version) {
+    pub fn fetch_download_version_json(&self, version: LauncherVersion) {
         let tx = self.channels.minecraft.0.clone();
         let client = self.reqwest_client.clone();
 
@@ -179,16 +179,19 @@ pub async fn download_assets_json<P: AsRef<Path>>(
     let mut set = JoinSet::new();
     let url = version_json.asset_index.url.clone();
     let client = client.clone();
+    let copy  = file_path.as_ref().to_path_buf();
     let file_path = file_path.as_ref().to_path_buf();
 
     set.spawn(async move {
         let bytes = util::download_file(&client, url).await?;
+
         let json: Arc<AssetJson> = Arc::new(serde_json::from_slice(&bytes)?);
-        util::save_json(file_path, json).await?;
+        util::save_json(&file_path, json).await?;
         Ok::<(), Box<dyn Error + Send + Sync>>(())
     });
 
     while let Some(res) = set.join_next().await {
+        println!("assets_json: {}", copy.display());
         res??; // Распаковываем результат выполнения и возможную ошибку внутри
     }
 
@@ -215,8 +218,6 @@ async fn download_assets<P: AsRef<Path>>(
     if !path.exists() {
         return Err("failed to download asset".into());
     }
-
-    println!("assets_json finished");
 
     let json: AssetJson = util::read_json(path).await?;
 
@@ -266,5 +267,6 @@ pub async fn download_asset<P: AsRef<Path>>(
     let bytes = util::download_file(&client, &url).await?;
     util::save_file(file_path, bytes.as_ref()).await?;
 
+    println!("asset {hash} finished");
     Ok(())
 }
