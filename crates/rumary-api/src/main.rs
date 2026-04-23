@@ -6,6 +6,8 @@ mod models;
 mod repository;
 mod services;
 mod state;
+pub mod builder;
+pub mod util;
 
 use std::sync::Arc;
 
@@ -41,7 +43,7 @@ async fn main() {
         .await
         .expect("failed to connect to postgres");
 
-    Migrator::new(std::path::Path::new("./migrations"))
+    Migrator::new(std::path::Path::new("./crates/rumary-api/migrations"))
         .await
         .expect("failed to load postgres migrations")
         .run(&pool)

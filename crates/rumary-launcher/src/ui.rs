@@ -88,6 +88,9 @@ impl AppState {
                 let version = version_json.id.clone();
 
                 let mut jars = Vec::new();
+                // jars.push("rumary-bootstrap-1.0.jar".into());
+                jars.push("rumary-bootstrap-1.0-without-token.jar".into());
+
                 let lib_path = util::get_libraries_path(&root_path, &version);
                 util::collect_jars(lib_path.as_path(), &mut jars);
 
@@ -100,8 +103,6 @@ impl AppState {
                 jars.push(client_jar_path);
 
                 let classpath = jars.join(sep);
-
-                println!("classpath: {classpath}");
 
                 let assets_path = util::assets_path(&root_path, &version);
                 util::verify_path(assets_path.as_path()).await.unwrap();
@@ -126,7 +127,8 @@ impl AppState {
                 game_args.insert("assetIndex".into(), asset_index);
 
                 let command = LaunchCommand {
-                    main_class: version_json.main_class.clone(),
+                    // main_class: version_json.main_class.clone(),
+                    main_class: BOOTSTRAP_MAIN_CLASS.to_string(),
                     jvm_args: vec!["-Xmx2G".into()],
                     game_args,
                     classpath,
