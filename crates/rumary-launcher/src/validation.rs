@@ -181,7 +181,7 @@ impl ValidationService {
                 }
                 Ok::<(), Box<dyn std::error::Error + Send + Sync>>(())
             });
-            if set.len() > 20
+            if set.len() > 50
                 && let Some(res) = set.join_next().await
             {
                 res??;

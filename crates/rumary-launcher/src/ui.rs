@@ -13,6 +13,8 @@ use uuid::Uuid;
 
 slint::include_modules!();
 
+const BOOTSTRAP_MAIN_CLASS: &str = "net.daimon.bootstrap.Main";
+
 impl AppState {
     fn set_language(&mut self, lang: &str) {
         self.translator.set_language(lang);
