@@ -1,5 +1,5 @@
 use crate::app::AppState;
-use crate::models::{AssetJson, Library, LauncherVersion, VersionJson, VersionManifest};
+use rumary_dto::domain::launcher::ChosenVersion;
 use crate::result::UtilResult;
 use crate::util;
 use reqwest::IntoUrl;
@@ -9,6 +9,7 @@ use std::path::Path;
 use std::sync::Arc;
 use tokio::fs;
 use tokio::task::JoinSet;
+use rumary_dto::mojang::dto::response::{AssetJson, Library, VersionJson, VersionManifest};
 
 pub const MANIFEST_URL: &str = "https://launchermeta.mojang.com/mc/game/version_manifest.json";
 const RESOURCES_URL: &str = "https://resources.download.minecraft.net";
@@ -72,7 +73,7 @@ impl AppState {
         });
     }
 
-    pub fn fetch_download_version_json(&self, version: LauncherVersion) {
+    pub fn fetch_download_version_json(&self, version: ChosenVersion) {
         let tx = self.channels.minecraft.0.clone();
         let client = self.reqwest_client.clone();
 

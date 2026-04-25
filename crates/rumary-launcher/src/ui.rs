@@ -1,9 +1,9 @@
 use crate::app::AppState;
-use crate::models::{
-    LaunchCommand, LauncherClient, LauncherVersion, Profile, VersionManifest,
-};
 use crate::util;
 use crate::validation::ValidationService;
+use rumary_dto::domain::launcher::{ChosenVersion, MinecraftLaunchArgs};
+use rumary_dto::dto::api::response::{LauncherClientDto, ProfileDto};
+use rumary_dto::mojang::dto::response::VersionManifest;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::process::Command;
@@ -30,7 +30,7 @@ impl AppState {
 
         self.rt.spawn(async move {
             if let Ok(response) = util::get_response(&reqwest_client, &url).await
-                && let Ok(clients) = response.json::<Vec<LauncherClient>>().await
+                && let Ok(clients) = response.json::<Vec<LauncherClientDto>>().await
             {
                 let _ = tx.send(clients);
             }
@@ -46,7 +46,7 @@ impl AppState {
 
         self.rt.spawn(async move {
             if let Ok(response) = util::get_response(&reqwest_client, &url).await
-                && let Ok(profiles) = response.json::<Vec<Profile>>().await
+                && let Ok(profiles) = response.json::<Vec<ProfileDto>>().await
             {
                 let _ = tx.send(profiles);
             }
@@ -77,13 +77,15 @@ impl AppState {
 
         let root_path = self.config.root_path.clone();
 
-        // Тут можно просто проверку валидности вызывать, она сама скачет все недостающие файлы.
-        // При этом смежные библиотеку оставит, это даже лучше.
         self.rt.spawn(async move {
-            if validation_service.validate_version().await.unwrap_or_else(|e| {
-                eprintln!("validate checking has found error: {e}");
-                false
-            }) {
+            if validation_service
+                .validate_version()
+                .await
+                .unwrap_or_else(|e| {
+                    eprintln!("validate checking has found error: {e}");
+                    false
+                })
+            {
                 let version_json = validation_service.version_json.clone();
                 let version = version_json.id.clone();
 
@@ -126,7 +128,7 @@ impl AppState {
                 game_args.insert("assetsDir".into(), assets_path);
                 game_args.insert("assetIndex".into(), asset_index);
 
-                let command = LaunchCommand {
+                let command = MinecraftLaunchArgs {
                     // main_class: version_json.main_class.clone(),
                     main_class: BOOTSTRAP_MAIN_CLASS.to_string(),
                     jvm_args: vec!["-Xmx2G".into()],
@@ -139,7 +141,7 @@ impl AppState {
         });
     }
 
-    fn run_game(&mut self, command: LaunchCommand) {
+    fn run_game(&mut self, command: MinecraftLaunchArgs) {
         self.status = util::t(&self.translator, "launching");
 
         let root_path = &self.config.root_path;
@@ -178,7 +180,7 @@ impl AppState {
             let name = version.id;
             let url = version.url;
 
-            let launcher_version = LauncherVersion {
+            let launcher_version = ChosenVersion {
                 id: Uuid::new_v4(),
                 name,
                 url,

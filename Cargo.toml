@@ -1,6 +1,7 @@
 [workspace]
 members = [
     "crates/rumary-api",
+    "crates/rumary-dto",
     "crates/rumary-launcher",
     "crates/rumary-launcher-builder",
 ]
@@ -14,12 +15,14 @@ version = "0.1.0"
 argon2 = "0.5"
 async-trait = "0.1"
 axum = "0.8"
+bytes = "1.11.1"
 chrono = { version = "0.4", features = ["serde"] }
 reqwest = { version = "0.13.2", default-features = false, features = ["json", "rustls"] }
-rumary-launcher-builder = { path = "crates/rumary-launcher-builder"}
+reqwest-retry = "0.9.1"
+reqwest-middleware = "0.5.1"
 semver = { version = "1", features = ["serde"] }
 serde = { version = "1", features = ["derive"] }
-serde_json = "1"
+serde_json = "1.0.149"
 sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio-rustls", "postgres", "uuid", "chrono", "json", "migrate"] }
 thiserror = "2"
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "sync", "net", "process", "fs"] }

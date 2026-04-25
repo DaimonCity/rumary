@@ -1,0 +1,14 @@
+[package]
+name = "rumary-dto"
+edition.workspace = true
+version.workspace = true
+
+[lib]
+name = "rumary_dto"
+
+[dependencies]
+tokio.workspace = true
+serde.workspace = true
+uuid.workspace = true
+url = "2.5.8"
+hex = "0.4.3"

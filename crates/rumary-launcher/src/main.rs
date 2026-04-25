@@ -1,7 +1,6 @@
 mod app;
 mod config;
 mod i18n;
-mod models;
 mod ui;
 pub mod download;
 pub mod util;

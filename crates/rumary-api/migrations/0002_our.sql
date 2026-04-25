@@ -1,6 +1,6 @@
 create table if not exists players
 (
-    user_uuid      uuid primary key,
+    user_uuid      uuid unique ,
     minecraft_uuid uuid    not null,
     access_token   text    not null,
     nickname       text    not null,
@@ -9,7 +9,7 @@ create table if not exists players
 
 create table if not exists users
 (
-    user_uuid          Uuid,
+    user_uuid          Uuid primary key default gen_random_uuid(),
     is_banned          bool,
     access_level       int,
     refresh_token_hash TEXT,

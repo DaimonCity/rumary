@@ -1,16 +1,15 @@
 use crate::config::LauncherConfig;
 use crate::download::MANIFEST_URL;
 use crate::i18n::Translator;
-use crate::models::{
-    LaunchCommand, LauncherClient, Profile, LauncherVersion, VersionJson, VersionManifest,
-};
+use rumary_dto::domain::launcher::ChosenVersion;
 use crate::result::AppResult;
 use crate::ui::AppWindow;
 use crate::validation::ValidationService;
 use crate::{ui, util};
 use reqwest::IntoUrl;
 use reqwest_middleware::{ClientBuilder, ClientWithMiddleware};
-use reqwest_retry::{RetryTransientMiddleware, policies::ExponentialBackoff};
+use reqwest_retry::{policies::ExponentialBackoff, RetryTransientMiddleware};
+use rumary_dto::mojang::dto::response::{Version, VersionJson, VersionManifest};
 use slint::ComponentHandle;
 use std::cell::RefCell;
 use std::error::Error;
@@ -18,7 +17,13 @@ use std::rc::Rc;
 use std::sync::mpsc;
 use std::time::Duration;
 use tokio::runtime::Runtime;
+use rumary_dto::domain::launcher::MinecraftLaunchArgs;
+use rumary_dto::dto::api::response::LauncherClientDto;
+use rumary_dto::dto::api::response::ProfileDto;
 
+
+// channels for json
+// pub struct JsonChannels
 pub struct AppChannels {
     // files: (mpsc::Sender<Vec<FileEntry>>, mpsc::Receiver<Vec<FileEntry>>),
     pub manifest: (
@@ -26,13 +31,16 @@ pub struct AppChannels {
         mpsc::Receiver<VersionManifest>,
     ),
     pub clients: (
-        mpsc::Sender<Vec<LauncherClient>>,
-        mpsc::Receiver<Vec<LauncherClient>>,
+        mpsc::Sender<Vec<LauncherClientDto>>,
+        mpsc::Receiver<Vec<LauncherClientDto>>,
     ),
-    pub profiles: (mpsc::Sender<Vec<Profile>>, mpsc::Receiver<Vec<Profile>>),
-    pub launch: (mpsc::Sender<LaunchCommand>, mpsc::Receiver<LaunchCommand>),
+    pub profiles: (mpsc::Sender<Vec<ProfileDto>>, mpsc::Receiver<Vec<ProfileDto>>),
+    pub launch: (mpsc::Sender<MinecraftLaunchArgs>, mpsc::Receiver<MinecraftLaunchArgs>),
     pub minecraft: (mpsc::Sender<VersionJson>, mpsc::Receiver<VersionJson>),
-    pub validation_service: (mpsc::Sender<ValidationService>, mpsc::Receiver<ValidationService>),
+    pub validation_service: (
+        mpsc::Sender<ValidationService>,
+        mpsc::Receiver<ValidationService>,
+    ),
     pub status: (mpsc::Sender<String>, mpsc::Receiver<String>),
 }
 
@@ -40,9 +48,9 @@ pub struct AppState {
     pub translator: Translator,
     pub config: LauncherConfig,
     pub show_settings: bool,
-    pub clients: Vec<LauncherClient>,
-    pub profiles: Vec<Profile>,
-    pub versions: Vec<LauncherVersion>,
+    pub clients: Vec<LauncherClientDto>,
+    pub profiles: Vec<ProfileDto>,
+    pub versions: Vec<ChosenVersion>,
     pub selected_client: Option<usize>,
     pub selected_profile: Option<usize>,
     pub selected_version: Option<usize>,
@@ -91,7 +99,7 @@ impl AppState {
         Some(self.versions[index].name.clone())
     }
 
-    pub(crate) fn get_version(&self) -> Option<LauncherVersion> {
+    pub(crate) fn get_version(&self) -> Option<ChosenVersion> {
         let index = self.selected_version?;
         Some(self.versions[index].clone())
     }
@@ -100,14 +108,19 @@ impl AppState {
         let _ = confy::store("rumary-launcher", None, &self.config);
     }
 
-    pub(crate) async fn get_version_url(reqwest_client: &ClientWithMiddleware, version_id: &str) -> Result<impl IntoUrl, Box<dyn Error + Send + Sync>> {
+    pub(crate) async fn get_version_url(
+        reqwest_client: &ClientWithMiddleware,
+        version_id: &str,
+    ) -> Result<impl IntoUrl, Box<dyn Error + Send + Sync>> {
         let manifest = Self::get_manifest(reqwest_client).await?;
-        let version = manifest.get_version(version_id).await?;
+        let version = Version::get_version(&manifest, version_id).await?;
         let url = version.url.clone();
         Ok(url)
     }
 
-    async fn get_manifest(reqwest_client: &ClientWithMiddleware) -> Result<VersionManifest, Box<dyn Error + Send + Sync>> {
+    async fn get_manifest(
+        reqwest_client: &ClientWithMiddleware,
+    ) -> Result<VersionManifest, Box<dyn Error + Send + Sync>> {
         Ok(util::get_response(reqwest_client, MANIFEST_URL)
             .await?
             .json::<VersionManifest>()

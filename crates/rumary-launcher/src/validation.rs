@@ -2,7 +2,6 @@ use crate::download::{
     download_asset, download_assets_json, download_lib, download_minecraft_jar, get_assets_json,
     get_version_json,
 };
-use crate::models::{AssetJson, VersionJson};
 use crate::result::ValidationResult;
 use crate::util;
 use crate::util::HashAlgo;
@@ -12,6 +11,7 @@ use std::ops::Deref;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tokio::task::JoinSet;
+use rumary_dto::mojang::dto::response::{AssetJson, VersionJson};
 
 pub struct ValidationService {
     pub version_json: Arc<VersionJson>,
