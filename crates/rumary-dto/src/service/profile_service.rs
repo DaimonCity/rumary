@@ -11,7 +11,7 @@ pub(crate) type ServiceResult<T> = Result<T, Box<dyn Error + Send + Sync>>;
 pub struct ProfileMapperService;
 
 impl ProfileMapperService {
-    pub fn build(&self, dto: ProfileDto) -> ServiceResult<Profile> {
+    pub fn build(dto: ProfileDto) -> ServiceResult<Profile> {
         let icon = DownloadUrl::from_string(dto.icon)?;
 
         let hard_check = Self::map_check_dirs(dto.hard_check)?;
