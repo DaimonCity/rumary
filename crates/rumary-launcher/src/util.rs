@@ -110,7 +110,7 @@ pub async fn save_file<P: AsRef<Path>>(file_path: P, bytes: &[u8]) -> UtilResult
         tokio::fs::create_dir_all(parent).await?;
     }
 
-    let file = tokio::fs::File::create(file_path).await?;
+    let file = File::create(file_path).await?;
     let mut writer = BufWriter::new(file);
     writer.write_all(bytes).await?;
     writer.flush().await?;
