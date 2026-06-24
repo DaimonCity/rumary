@@ -27,3 +27,12 @@ pub trait AppRepository: Send + Sync {
 
     async fn insert_installation_request(&self, request: &InstallationRequest) -> AppResult<()>;
 }
+
+pub trait ClientProfileRepository: Send + Sync {
+    async fn insert_client(&self, client: &Client) -> AppResult<()>;
+    async fn list_clients(&self) -> AppResult<Vec<Client>>;
+    async fn find_client_by_id(&self, client_id: Uuid) -> AppResult<Option<Client>>;
+
+    async fn insert_profile(&self, profile: &Profile) -> AppResult<()>;
+    async fn find_profile_by_id(&self, profile_id: Uuid) -> AppResult<Option<Profile>>;
+}

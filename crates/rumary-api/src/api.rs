@@ -28,6 +28,7 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/api/users", get(list_users))
         .route("/api/users/{user_id}/ban", post(ban_user))
         .route("/api/users/{user_id}/unban", post(unban_user))
+
         .route("/api/clients", post(create_client).get(list_clients))
         .route("/api/profiles", post(create_profile))
         .route("/api/profiles/{profile_id}", get(get_profile))
