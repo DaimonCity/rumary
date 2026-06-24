@@ -9,18 +9,19 @@ use crate::{ui, util};
 use reqwest::IntoUrl;
 use reqwest_middleware::{ClientBuilder, ClientWithMiddleware};
 use reqwest_retry::{policies::ExponentialBackoff, RetryTransientMiddleware};
-use rumary_dto::mojang::dto::response::{Version, VersionJson, VersionManifest};
 use slint::ComponentHandle;
 use std::cell::RefCell;
+use std::env;
 use std::error::Error;
 use std::rc::Rc;
 use std::sync::mpsc;
 use std::time::Duration;
 use tokio::runtime::Runtime;
 use rumary_dto::domain::launcher::MinecraftLaunchArgs;
+use rumary_dto::domain::launcher::state::OsType;
 use rumary_dto::dto::api::response::LauncherClientDto;
 use rumary_dto::dto::api::response::ProfileDto;
-
+use rumary_dto::mojang::dto::response::{Version, VersionJson, VersionManifest};
 
 // channels for json
 // pub struct JsonChannels
@@ -45,6 +46,7 @@ pub struct AppChannels {
 }
 
 pub struct AppState {
+    pub os: OsType,
     pub translator: Translator,
     pub config: LauncherConfig,
     pub show_settings: bool,
@@ -67,8 +69,11 @@ impl AppState {
         let reqwest_client = ClientBuilder::new(reqwest::Client::new())
             .with(RetryTransientMiddleware::new_with_policy(retry_policy))
             .build();
+        let current_os = OsType::try_from(env::consts::OS)?;
+        
 
         Ok(Self {
+            os: current_os,
             translator: Translator::new("ru"),
             config,
             show_settings: false,

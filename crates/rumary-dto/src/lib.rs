@@ -1,10 +1,11 @@
-pub mod dto;
 pub mod domain;
+pub mod dto;
 pub mod service;
 mod external;
 
+#[cfg(feature = "mojang")]
 pub use {
-    external::*
+    external::mojang
 };
 
 pub fn add(left: u64, right: u64) -> u64 {
@@ -21,4 +22,3 @@ mod tests {
         assert_eq!(result, 4);
     }
 }
-

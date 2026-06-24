@@ -118,7 +118,7 @@ pub async fn save_file<P: AsRef<Path>>(file_path: P, bytes: &[u8]) -> UtilResult
     Ok(())
 }
 
-pub async fn save_json<P: AsRef<Path>, J: Serialize + Send + Sync + 'static>(
+pub async fn save_serde<P: AsRef<Path>, J: Serialize + Send + Sync + 'static>(
     json_path: P,
     json: Arc<J>,
 ) -> UtilResult<()> {

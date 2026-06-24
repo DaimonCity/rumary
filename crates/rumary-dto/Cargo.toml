@@ -7,8 +7,13 @@ version.workspace = true
 name = "rumary_dto"
 
 [dependencies]
-tokio.workspace = true
 serde.workspace = true
 uuid.workspace = true
 url = "2.5.8"
 hex = "0.4.3"
+
+[features]
+mojang = []
+domain_launcher = []
+domain_api = []
+dto_api = []

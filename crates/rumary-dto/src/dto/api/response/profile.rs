@@ -8,8 +8,8 @@ pub struct ProfileDto {
     pub id: Uuid,
     pub name: String,
     pub icon: String,
-    pub hard_check: CheckDirsDto,
-    pub soft_check: CheckDirsDto,
+    pub hard_check: Vec<FileInfoDto>,
+    pub soft_check: Vec<FileInfoDto>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]

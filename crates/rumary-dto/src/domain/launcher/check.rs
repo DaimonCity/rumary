@@ -10,7 +10,7 @@ pub struct CheckDirs {
 #[derive(Debug)]
 pub struct Files(HashMap<String, FileInfo>);
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct FileInfo {
     pub sha1: Vec<u8>,
     pub _type: CheckType,
@@ -35,7 +35,7 @@ impl Files {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum CheckType {
     Required,
     Optional,

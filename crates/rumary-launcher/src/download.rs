@@ -9,7 +9,7 @@ use std::path::Path;
 use std::sync::Arc;
 use tokio::fs;
 use tokio::task::JoinSet;
-use rumary_dto::mojang::dto::response::{AssetJson, Library, VersionJson, VersionManifest};
+use rumary_dto::mojang::dto::response::{VersionManifest, VersionJson, AssetJson, Library};
 
 pub const MANIFEST_URL: &str = "https://launchermeta.mojang.com/mc/game/version_manifest.json";
 const RESOURCES_URL: &str = "https://resources.download.minecraft.net";
@@ -50,7 +50,8 @@ impl AppState {
             let assets_task = download_assets(&reqwest_client, &root_path, &version_json);
             let libs_task = download_libs_task(&reqwest_client, libs_path, libs);
             let mc_task = download_minecraft_jar(&reqwest_client, &root_path, &version_json);
-            let version_json_save_task = util::save_json(version_json_path, version_json.clone());
+            // let version_json_save_task = util::save_json(version_json_path, version_json.clone());
+            let version_json_save_task = util::save_serde(version_json_path, version_json.clone());
 
             let (mc_res, lib_res, assets_res, version_json_save_res) =
                 tokio::join!(mc_task, libs_task, assets_task, version_json_save_task);
@@ -187,7 +188,7 @@ pub async fn download_assets_json<P: AsRef<Path>>(
         let bytes = util::download_file(&client, url).await?;
 
         let json: Arc<AssetJson> = Arc::new(serde_json::from_slice(&bytes)?);
-        util::save_json(&file_path, json).await?;
+        util::save_serde(&file_path, json).await?;
         Ok::<(), Box<dyn Error + Send + Sync>>(())
     });
 

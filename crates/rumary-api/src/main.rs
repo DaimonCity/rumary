@@ -53,8 +53,8 @@ async fn main() {
     let repository = Arc::new(PostgresRepository::new(pool));
     let state = Arc::new(AppState::new(
         repository,
-        Arc::new(LocalAuthProvider::default()),
-        Arc::new(StubMinecraftProvider::default()),
+        Arc::new(LocalAuthProvider),
+        Arc::new(StubMinecraftProvider),
         Arc::new(StubSkinService::default()),
     ));
 

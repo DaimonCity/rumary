@@ -3,13 +3,15 @@ use crate::util;
 use crate::validation::ValidationService;
 use rumary_dto::domain::launcher::{ChosenVersion, MinecraftLaunchArgs};
 use rumary_dto::dto::api::response::{LauncherClientDto, ProfileDto};
-use rumary_dto::mojang::dto::response::VersionManifest;
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::env;
 use std::process::Command;
 use std::rc::Rc;
 use std::sync::Arc;
 use uuid::Uuid;
+use rumary_dto::domain::launcher::state::OsType;
+use rumary_dto::mojang::dto::response::VersionManifest;
 
 slint::include_modules!();
 
@@ -76,6 +78,7 @@ impl AppState {
         let tx = self.channels.launch.0.clone();
 
         let root_path = self.config.root_path.clone();
+        let os = self.os;
 
         self.rt.spawn(async move {
             if validation_service
@@ -101,7 +104,8 @@ impl AppState {
                     .to_string_lossy()
                     .to_string();
 
-                let sep = if cfg!(windows) { ";" } else { ":" };
+                let sep = if os == OsType::Windows { ";" } else { ":" };
+
                 jars.push(client_jar_path);
 
                 let classpath = jars.join(sep);
@@ -117,6 +121,9 @@ impl AppState {
                 let game_dir = game_dir.as_path().to_string_lossy().to_string();
 
                 let asset_index = version_json.asset_index.id.clone();
+
+                // let game_args = version_json.clone().arguments.clone().unwrap().game.unwrap();
+                // do to struct with that var-s
 
                 let mut game_args: HashMap<String, String> = HashMap::new();
                 game_args.insert("username".into(), "Daimon".into());
@@ -184,7 +191,7 @@ impl AppState {
                 id: Uuid::new_v4(),
                 name,
                 url,
-                version_json: None,
+                // version_json: None,
             };
 
             self.versions.push(launcher_version);

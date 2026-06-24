@@ -1,8 +1,6 @@
 use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
-use crate::mojang::dto::response::VersionJson;
-
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct MinecraftLaunchArgs {
     pub jvm_args: Vec<String>,
@@ -11,10 +9,11 @@ pub struct MinecraftLaunchArgs {
     pub classpath: String,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg(feature = "mojang")]
 pub struct ChosenVersion {
     pub id: Uuid,
     pub name: String,
     pub url: String,
-    pub version_json: Option<VersionJson>,
+    // pub version_json: Option<VersionJson>,
 }
