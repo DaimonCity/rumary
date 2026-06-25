@@ -234,6 +234,8 @@ pub struct NewConfiguration {
 7. Выбор скина
     - Сохранение нового скина на сервере (post запрос)
 
+## Сценарии Сервера
+
 ## Traits and Functions
 ### InstanceRepo trait
 ```rust
@@ -243,7 +245,7 @@ trait InstanceRepo {
     fn update_instance(&self, update_instance: UpdateInstance) -> Result<Instance, Error>;
     fn find_instance(&self, uuid: Uuid) -> Result<Instance, Error>;
     fn delete_instance(&self, uuid: Uuid) -> Result<(), Error>;
-    fn get_list_configs(&self, access_level: i16) -> Result<Vec<Instance>, Error>;
+    fn get_list_configs(&self, access_level: u16) -> Result<Vec<Instance>, Error>;
 }
 ```
 
@@ -255,6 +257,16 @@ trait ConfigurationRepo {
     fn update_config(&self, update_instance: UpdateConfiguration) -> Result<Configuration, Error>;
     fn find_config(&self, uuid: Uuid) -> Result<Configuration, Error>;
     fn delete_config(&self, uuid: Uuid) -> Result<(), Error>;
-    fn get_list_configs(&self, access_level: i16) -> Result<Vec<Configuration>, Error>;
+    fn get_list_configs(&self, access_level: u16) -> Result<Vec<Configuration>, Error>;
 }
 ```
+0 - низщий (just user)
+1 - VIP
+2 - LORD
+3 - ADMIN
+4 - GLAV ADMIN
+5 - Основатель
+6 - Owner
+7 - King
+8 - BO$$
+10 - OP + CONSOLE
