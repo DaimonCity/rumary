@@ -10,10 +10,8 @@ pub struct MinecraftLaunchArgs {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[cfg(feature = "mojang")]
 pub struct ChosenVersion {
     pub id: Uuid,
     pub name: String,
     pub url: String,
-    // pub version_json: Option<VersionJson>,
 }

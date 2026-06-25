@@ -2,7 +2,7 @@
 
 ## Зачем оно надо?
 Rumary - это экосистема для удобного менеджмента сборок майнкрафта под нужды вашего Сервера
-Rumary API - это основная логика управления клиентами и профилями для лаунчера.
+Rumary API - это основная логика управления instances (клиентами) и configurations (профилями) для лаунчера.
 
 ## Основные задачи, которое решает
 ### Создание клиентов (instance)
@@ -11,7 +11,7 @@ Rumary API - это основная логика управления клие�
 #### DTO Model
 ```json
 {
-  "icon": "<something>",
+  "icon": "<url-to-icon>",
   "dir_name": "smp",
   "displayed_name": "SMP",
   "version": "1.21.1",
@@ -20,17 +20,12 @@ Rumary API - это основная логика управления клие�
   "loader_version": null
 }
 ```
-icon - не определенно
-
-dir_name - название директории instance
-
-displayed_name - имя instance в системе
-
-version - версия майнкрафта
-
-loader - загрузчик
-
-loader_version - версия загрузчика (только у vanilla нет версии)
+- icon - url к картинке
+- dir_name - название директории instance
+- displayed_name - имя instance в системе
+- version - версия майнкрафта
+- loader - загрузчик
+- loader_version - версия загрузчика (только у vanilla нет версии)
 
 Соответственно, сервис по созданию профиля должен обработать эти поля.
 
@@ -88,11 +83,31 @@ pub struct NewConfiguration {
 2. Валидация полей: проверка существования нужных версий, загрузчиков и т.п.
 3. Данные добавляются в БД через [функцию](#instancerepo-trait)
 
-### Загрузка файлов
+### Загрузка instance
+Тип запроса: POST
+
+#### DTO Model
+##### Request
+```json
+{
+   "instance_uuid": "<uuid>"
+}
+```
+
+##### Response
+```json
+{
+   "version_id": "1.21.1",
+   "loader": "vanilla",
+   "loader_version": null
+}
+```
+
+### Загрузка конфигурации
 Типа запроса: POST
 
 #### DTO Model
-##### Request 
+##### Request
 ```json
 {
   "uuid": "<uuid>"
@@ -124,6 +139,7 @@ pub struct NewConfiguration {
 } 
 ```
 
+```Это вообще кста в лаунчер надо запихать
 #### Процесс проверки
 ##### 1. Проходимся по хэшмапе files и разбиваем её элементы на две хэшмапы:
     - soft_files
@@ -147,38 +163,98 @@ pub struct NewConfiguration {
                 Проверяет есть ли файл:
                 - Нет: идёт дальше
                 - Есть: проверяет хэш и перескачивает при надобности 
+```
 
+### Получение списка доступных instances
+Тип запроса: GET
 
-## Сценарии
+#### DTO Model 
+##### Response
+```json
+[
+   {
+      "uuid": "<uuid>",
+      "displayed_name": "Foo",
+      "description": "Foo is the best instance forever",
+      "dir_name": "foo",
+      "icon": "<url-to-icon>"
+   }
+]
+```
+
+Обработка:
+1. Понять уровень доступа юзера
+2. Передать уровень в функцию Репозитория
+3. Сделать запрос в БД
+4. Полученный список переделать в [json](#response-1) и отправить
+
+### Получение списка доступных configurations
+Тип запроса: POST
+
+#### DTO Model
+##### Request
+```json
+{
+   "instance_uuid": "<uuid>"
+}
+```
+
+##### Response
+```json
+[
+   {
+      "uuid": "<uuid>",
+      "displayed_name": "Low",
+      "dir-name": "low",
+      "icon": "<url-to-icon>",
+      "description": "The Low config is used just to start a game"
+   }
+]
+```
+
+Обработка:
+1. Получаем access_level Клиента 
+2. По полученному от Клиента [запросу](#request-1) проверяем - есть ли у него доступ к instance
+3. Если нет, то игнорируем
+4. Если да, то передаём access_level в Репо функцию для получения списка конфигураций
+5. Формируем запрос в БД → БД отдаёт список конфигураций 
+6. Формируем [DTO Model Response](#response-2)
+
+## Сценарии c Клиентом
 1. Регистрация (есть прото-релиз)
 2. Авторизация (есть прото-релиз)
 3. Выйти из аккаунта (есть прото-релиз)
 4. Выбор instance (клиент) - если есть несколько:
-   - список доступных instances (get запрос)
+   - [Список доступных instances (get запрос)](#получение-списка-доступных-instances)
 5. Выбор конфигурацию (профиль) - если есть несколько
-    - список доступных конфигураций (post запрос)
+    - [Список доступных конфигураций (post запрос)](#получение-списка-доступных-configurations)
 6. Нажатие кнопки ИГРАТЬ
-    - [Загрузка файлов](#загрузка-файлов)
+    - [Загрузка экземпляра](#загрузка-instance)
+    - [Загрузка конфигурации файлов](#загрузка-конфигурации)
 7. Выбор скина
     - Сохранение нового скина на сервере (post запрос)
 
 ## Traits and Functions
 ### InstanceRepo trait
 ```rust
-trait InstanceRepo { 
+trait InstanceRepo {
+    type Error;
     fn create_instance(&self, new_instance: NewInstance) -> Result<Instance, Error>;
     fn update_instance(&self, update_instance: UpdateInstance) -> Result<Instance, Error>;
     fn find_instance(&self, uuid: Uuid) -> Result<Instance, Error>;
     fn delete_instance(&self, uuid: Uuid) -> Result<(), Error>;
+    fn get_list_configs(&self, access_level: i16) -> Result<Vec<Instance>, Error>;
 }
 ```
 
 ### ConfigurationRepo trait
 ```rust
-trait ConfigurationRepo { 
+trait ConfigurationRepo {
+    type Error;
     fn create_config(&self, new_config: NewConfiguration) -> Result<Configuration, Error>;
     fn update_config(&self, update_instance: UpdateConfiguration) -> Result<Configuration, Error>;
-    fn find_config(&self, uuid: Uuid) -> Result<Instance, Error>;
+    fn find_config(&self, uuid: Uuid) -> Result<Configuration, Error>;
     fn delete_config(&self, uuid: Uuid) -> Result<(), Error>;
+    fn get_list_configs(&self, access_level: i16) -> Result<Vec<Configuration>, Error>;
 }
 ```
