@@ -11,8 +11,15 @@ pub struct Library {
     pub natives: Option<HashMap<String, String>>,
 }
 
+// #[derive(Debug, Serialize, Deserialize, Clone)]
+// pub struct LibraryDownload {
+//     pub artifact: Option<DownloadInfo>,
+//     pub classifiers: Option<HashMap<String, DownloadInfo>>,
+// }
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct LibraryDownloads {
-    pub artifact: Option<DownloadInfo>,
-    pub classifiers: Option<HashMap<String, DownloadInfo>>,
+#[serde(rename_all = "snake_case")]
+pub enum LibraryDownloads {
+    Artifact(Option<DownloadInfo>),
+    Classifiers(Option<HashMap<String, DownloadInfo>>),
 }

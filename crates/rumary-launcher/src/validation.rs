@@ -11,7 +11,7 @@ use std::ops::Deref;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tokio::task::JoinSet;
-use rumary_dto::mojang::dto::response::{AssetJson, VersionJson};
+use rumary_dto::mojang::dto::response::{AssetJson, LibraryDownloads, VersionJson};
 
 pub struct ValidationService {
     pub version_json: Arc<VersionJson>,
@@ -72,37 +72,57 @@ impl ValidationService {
     async fn validate_libs(&self) -> ValidationResult<()> {
         let version_json = self.version_json.clone();
         let libraries = version_json.libraries.clone();
-        let id = version_json.id.clone();
 
         let root_path = self.root_path.clone().deref().to_owned();
-        let libs_path = util::get_libraries_path(&root_path, &id);
+        let libs_path = util::get_libraries_path(&root_path);
 
         let mut set = JoinSet::new();
 
+
         for library in libraries {
-            let client = self.reqwest_client.clone();
-            let artifact = library.downloads.unwrap().artifact.unwrap();
-            let url = artifact.url;
-
-            let lib_path = artifact.path.unwrap();
-            let file_path = libs_path.join(&lib_path);
-
-            let hash = artifact.sha1;
-
-            set.spawn(async move {
-                if !util::verify_file_hash(&file_path, &hash, HashAlgo::Sha1)
-                    .await
-                    .unwrap_or(false)
-                {
-                    download_lib(&client, &file_path, &url).await?;
+            let artifacts = match library.downloads {
+                None => {
+                    vec!()
                 }
-                Ok::<(), Box<dyn std::error::Error + Send + Sync>>(())
-            });
-            if set.len() > 20
-                && let Some(res) = set.join_next().await
-            {
-                res??;
+                Some(lib) => {
+                    match lib {
+                        LibraryDownloads::Artifact(artifact) => {
+                            vec!(artifact.unwrap())
+                        }
+                        LibraryDownloads::Classifiers(classifiers) => {
+                            classifiers.unwrap().values().cloned().collect()
+                        }
+                    }
+                }
+            };
+
+            for artifact in artifacts {
+                let client = self.reqwest_client.clone();
+
+                let url = artifact.url;
+
+                let lib_path = artifact.path.unwrap();
+                let file_path = libs_path.join(&lib_path);
+
+                let hash = artifact.sha1;
+
+                set.spawn(async move {
+                    if !util::verify_file_hash(&file_path, &hash, HashAlgo::Sha1)
+                        .await
+                        .unwrap_or(false)
+                    {
+                        download_lib(&client, &file_path, &url).await?;
+                    }
+                    Ok::<(), Box<dyn std::error::Error + Send + Sync>>(())
+                });
+                if set.len() > 20
+                    && let Some(res) = set.join_next().await
+                {
+                    res??;
+                }
             }
+
+
         }
 
         while let Some(res) = set.join_next().await {
@@ -150,34 +170,42 @@ impl ValidationService {
     }
 
     async fn validate_assets(&self) -> ValidationResult<()> {
+        println!("Validating assets...");
+
         let client = self.reqwest_client.clone();
 
         let version_json = self.version_json.clone();
         let objects = &self.assets_json.objects;
 
         let root_path = self.root_path.clone();
+        let assets_path = util::objects_path(root_path.as_ref(), version_json.id.deref());
 
         let mut set = JoinSet::new();
 
         for asset in objects {
             let root_path = root_path.clone();
             let dir_name = &asset.1.hash[0..2];
-            let file_path = root_path.as_path().join(dir_name);
+            let file_name = &asset.1.hash;
+            let file_path = assets_path.as_path().join(dir_name).join(file_name);
 
             let hash = asset.1.hash.clone();
             let client = client.clone();
             let id = version_json.id.clone();
+
+            println!("Validating asset {}", file_path.display());
 
             set.spawn(async move {
                 let client = client.clone();
                 let id = id.clone();
                 let hash = hash.clone();
 
-                if !util::verify_file_hash(file_path, &hash, HashAlgo::Sha1)
+                if !util::verify_file_hash(&file_path, &hash, HashAlgo::Sha1)
                     .await
                     .unwrap_or(false)
                 {
+                    println!("Failed to validate asset {}", &file_path.display());
                     download_asset(client.deref(), root_path.as_ref(), &id, &hash).await?;
+
                 }
                 Ok::<(), Box<dyn std::error::Error + Send + Sync>>(())
             });

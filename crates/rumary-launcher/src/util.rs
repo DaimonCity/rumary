@@ -30,8 +30,8 @@ pub fn assets_json_path<P: AsRef<Path>>(root_path: P, version: &str, asset_index
         .join(format!("{}.json", asset_index))
 }
 
-pub fn get_libraries_path<P: AsRef<Path>>(root_path: P, version: &str) -> PathBuf {
-    root_path.as_ref().join("libraries").join(version)
+pub fn get_libraries_path<P: AsRef<Path>>(root_path: P) -> PathBuf {
+    root_path.as_ref().join("libraries")
 }
 
 pub fn version_json_path<P: AsRef<Path>>(root_path: P, version: &str) -> PathBuf {
@@ -200,7 +200,7 @@ where
     P: AsRef<Path>,
     H: AsRef<[u8]>,
 {
-    let file = File::open(path).await?;
+    let file = File::open(&path).await?;
     let mut reader = BufReader::new(file);
     let mut hasher = D::new();
     let mut buffer = [0; 8192];
@@ -214,6 +214,10 @@ where
     }
 
     let actual_hash = hasher.finalize();
+
+    // println!("{:?}", actual_hash.as_slice());
+    // println!("{:?}", hash.as_ref())
+    println!("File {:?} validated!", path.as_ref());
 
     Ok(actual_hash.as_slice() == hash.as_ref())
 }

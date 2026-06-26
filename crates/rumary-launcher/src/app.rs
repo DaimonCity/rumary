@@ -146,6 +146,7 @@ impl LauncherApp {
         {
             let state_mut = state.borrow_mut();
             state_mut.fetch_clients();
+            state_mut.download_manifest();
             ui::set_common_ui_values(&ui, &state_mut);
         }
 

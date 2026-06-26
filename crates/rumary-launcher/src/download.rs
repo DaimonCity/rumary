@@ -35,12 +35,8 @@ impl AppState {
         let tx = self.channels.status.0.clone();
 
         let root_path = self.config.root_path.clone();
-        let Some(ver) = self.get_selected_version_name() else {
-            return;
-        };
 
-        let libs_path = util::get_libraries_path(&root_path, &ver);
-        drop(ver);
+        let libs_path = util::get_libraries_path(&root_path);
 
         self.rt.spawn(async move {
             let version_json_path = util::version_json_path(root_path.as_str(), &version_json.id);
@@ -110,18 +106,19 @@ pub async fn get_assets_json<U: IntoUrl>(
     Ok(assets_json)
 }
 
+#[allow(dead_code)]
 async fn download_libs_task<P: AsRef<Path>>(
-    client: &ClientWithMiddleware,
-    root_lib_path: P,
+    _client: &ClientWithMiddleware,
+    _root_lib_path: P,
     libs: Vec<Library>,
 ) -> UtilResult<()> {
-    for lib in libs {
-        let artifact = lib.downloads.unwrap().artifact.unwrap();
-        let url = artifact.url;
-        let lib_path = artifact.path.unwrap();
-        let full_path = root_lib_path.as_ref().join(&lib_path);
-
-        download_lib(client, &full_path, &url).await?;
+    for _lib in libs {
+        // let artifact = lib.downloads.unwrap().artifact.unwrap();
+        // let url = artifact.url;
+        // let lib_path = artifact.path.unwrap();
+        // let full_path = root_lib_path.as_ref().join(&lib_path);
+        // 
+        // download_lib(client, &full_path, &url).await?;
     }
     println!("libs finished");
 
