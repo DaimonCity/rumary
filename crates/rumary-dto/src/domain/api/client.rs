@@ -1,6 +1,6 @@
 use uuid::Uuid;
-use crate::domain::launcher::MinecraftLaunchArgs;
 
+#[allow(dead_code)]
 pub struct Client {
     id: Uuid,
     display_name: String,
@@ -9,5 +9,4 @@ pub struct Client {
     url: String,
     loader: String,
     loader_version: String,
-    minecraft_launch_args: MinecraftLaunchArgs
 }

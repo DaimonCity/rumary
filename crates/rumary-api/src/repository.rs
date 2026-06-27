@@ -1,38 +1,33 @@
+use crate::error::AppResult;
 use async_trait::async_trait;
+use rumary_dto::domain::api::{NewTotpUser, NewUser, RefreshSessionUpdate, TotpUser, User, UserSession};
 use uuid::Uuid;
 
-use crate::{
-    error::AppResult,
-    models::{Client, InstallationRequest, LauncherBuild, Profile, Session, User},
-};
-
 #[async_trait]
-pub trait AppRepository: Send + Sync {
-    async fn insert_user(&self, user: &User) -> AppResult<()>;
-    async fn find_user_by_username(&self, username: &str) -> AppResult<Option<User>>;
-    async fn find_user_by_id(&self, user_id: Uuid) -> AppResult<Option<User>>;
-    async fn update_user_ban(&self, user_id: Uuid, banned: bool) -> AppResult<User>;
-    async fn list_users(&self) -> AppResult<Vec<User>>;
-    async fn insert_session(&self, session: &Session) -> AppResult<()>;
-
-    async fn insert_client(&self, client: &Client) -> AppResult<()>;
-    async fn list_clients(&self) -> AppResult<Vec<Client>>;
-    async fn find_client_by_id(&self, client_id: Uuid) -> AppResult<Option<Client>>;
-
-    async fn insert_profile(&self, profile: &Profile) -> AppResult<()>;
-    async fn find_profile_by_id(&self, profile_id: Uuid) -> AppResult<Option<Profile>>;
-
-    async fn insert_launcher_build(&self, build: &LauncherBuild) -> AppResult<()>;
-    async fn latest_launcher_build(&self, channel: &str) -> AppResult<Option<LauncherBuild>>;
-
-    async fn insert_installation_request(&self, request: &InstallationRequest) -> AppResult<()>;
+pub trait UserRepository: Send + Sync {
+    async fn create_user(&self, user: NewUser) -> AppResult<User>;
+    async fn find_user(&self, uuid: Uuid) -> AppResult<Option<User>>;
+    async fn find_user_by_login(&self, login: &str) -> AppResult<Option<User>>;
+    async fn delete_user(&self, uuid: Uuid) -> AppResult<()>;
+    async fn users_list(&self) -> AppResult<Vec<User>>;
 }
 
-pub trait ClientProfileRepository: Send + Sync {
-    async fn insert_client(&self, client: &Client) -> AppResult<()>;
-    async fn list_clients(&self) -> AppResult<Vec<Client>>;
-    async fn find_client_by_id(&self, client_id: Uuid) -> AppResult<Option<Client>>;
+#[async_trait]
+pub trait SessionRepository: Send + Sync {
+    async fn find_user_by_token_id(&self,
+                                   token_uuid: Uuid) -> AppResult<Option<UserSession>>;
+    async fn save_refresh_session(
+        &self,
+        user_uuid: Uuid,
+        session: RefreshSessionUpdate,
+    ) -> AppResult<()>;
+    async fn clear_refresh_session(&self, user_uuid: Uuid) -> AppResult<()>;
+}
 
-    async fn insert_profile(&self, profile: &Profile) -> AppResult<()>;
-    async fn find_profile_by_id(&self, profile_id: Uuid) -> AppResult<Option<Profile>>;
+#[async_trait]
+pub trait TotpRepository: Send + Sync {
+    async fn create_totp_user(&self, user: NewTotpUser) -> AppResult<TotpUser>;
+    async fn totp_user_confirmed(&self, uuid: Uuid) -> AppResult<TotpUser>;
+    async fn find_totp_user(&self, uuid: Uuid) -> AppResult<Option<TotpUser>>;
+    async fn delete_totp_user(&self, uuid: Uuid) -> AppResult<()>;
 }

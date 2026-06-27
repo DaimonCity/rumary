@@ -1,51 +1,89 @@
-use std::{
-    env,
-    net::{IpAddr, Ipv4Addr, SocketAddr},
-};
+use crate::error::AppError;
+use std::env;
 
-use crate::error::AppResult;
-
-#[derive(Debug, Clone)]
-pub struct AppConfig {
-    pub database_url: String,
-    pub bind_addr: SocketAddr,
+#[derive(Clone)]
+pub struct Config {
+    pub host: String,
+    pub port: u16,
+    pub database: DatabaseConfig,
+    pub jwt_secret: String,
+    pub totp_secret: String,
+    pub access_token_ttl_minutes: i64,
+    pub refresh_token_ttl_days: i64,
+    pub ws_ticket_ttl_seconds: i64,
+    pub secure_cookies: bool,
 }
 
-impl AppConfig {
-    pub fn from_env() -> AppResult<Self> {
-        let database_url = match env::var("DATABASE_URL") {
-            Ok(value) if !value.trim().is_empty() => value,
-            _ => build_database_url_from_parts()?,
+#[derive(Clone)]
+pub struct DatabaseConfig {
+    pub host: String,
+    pub port: u16,
+    pub user: String,
+    pub password: String,
+    pub db_name: String,
+}
+
+impl Config {
+    pub fn from_env() -> Result<Self, AppError> {
+        let host = read_env("API_HOST", "0.0.0.0");
+        let port = parse_env("API_PORT", "3000")?;
+        let secure_cookies = parse_env("COOKIE_SECURE", "false")?;
+        let access_token_ttl_minutes = parse_env("ACCESS_TOKEN_TTL_MINUTES", "15")?;
+        let refresh_token_ttl_days = parse_env("REFRESH_TOKEN_TTL_DAYS", "30")?;
+        let ws_ticket_ttl_seconds = parse_env("WS_TICKET_TTL_SECONDS", "60")?;
+
+        let database = DatabaseConfig {
+            host: read_env("DB_HOST", "0.0.0.0"),
+            port: parse_env("DB_PORT", "5432")?,
+            user: read_env("DB_USER", "postgres"),
+            password: read_env("DB_PASSWORD", "postgres"),
+            db_name: read_env("DB_NAME", "postgres"),
         };
 
-        let host = env::var("API_HOST")
-            .ok()
-            .and_then(|value| value.parse::<IpAddr>().ok())
-            .unwrap_or(IpAddr::V4(Ipv4Addr::UNSPECIFIED));
-        let port = env::var("API_PORT")
-            .ok()
-            .and_then(|value| value.parse::<u16>().ok())
-            .unwrap_or(3000);
+        let jwt_secret = required_env("JWT_SECRET")?;
+        let totp_secret = required_env("TOTP_SECRET")?;
+
+        if totp_secret.len() != 32 {
+            return Err(AppError::Configuration(
+                "TOTP_SECRET must be exactly 32 bytes long".to_string(),
+            ));
+        }
 
         Ok(Self {
-            database_url,
-            bind_addr: SocketAddr::new(host, port),
+            host,
+            port,
+            database,
+            jwt_secret,
+            totp_secret,
+            access_token_ttl_minutes,
+            refresh_token_ttl_days,
+            ws_ticket_ttl_seconds,
+            secure_cookies,
         })
+    }
+
+    pub fn totp_secret_key(&self) -> [u8; 32] {
+        self.totp_secret
+            .as_bytes()
+            .try_into()
+            .expect("validated in Config::from_env")
     }
 }
 
-fn build_database_url_from_parts() -> AppResult<String> {
-    let host = env_or_default("DB_HOST", "127.0.0.1");
-    let port = env_or_default("DB_PORT", "5000");
-    let user = env_or_default("DB_USER", "postgres");
-    let password = env_or_default("DB_PASSWORD", "postgres");
-    let db_name = env_or_default("DB_NAME", "postgres");
-
-    Ok(format!(
-        "postgres://{user}:{password}@{host}:{port}/{db_name}"
-    ))
+fn required_env(key: &str) -> Result<String, AppError> {
+    env::var(key).map_err(|_| AppError::Configuration(format!("missing required env var `{key}`")))
 }
 
-fn env_or_default(key: &str, default: &str) -> String {
-    env::var(key).unwrap_or_else(|_| default.to_owned())
+fn read_env(key: &str, default: &str) -> String {
+    env::var(key).unwrap_or_else(|_| default.to_string())
+}
+
+fn parse_env<T>(key: &str, default: &str) -> Result<T, AppError>
+where
+    T: std::str::FromStr,
+    T::Err: std::fmt::Display,
+{
+    let raw = read_env(key, default);
+    raw.parse::<T>()
+        .map_err(|err| AppError::Configuration(format!("invalid value for `{key}`: {err}")))
 }

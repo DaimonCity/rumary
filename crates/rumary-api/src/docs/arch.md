@@ -65,7 +65,7 @@ REST: Post
 #### DTO Model
 ```json
 {
-  "displayed_name": "Low",
+  "display_name": "Low",
   "client_uuid": "{uuid}",
   "dir_name": "low",
   "icon": "<url-to-icon>"
@@ -174,7 +174,7 @@ pub struct NewConfiguration {
 [
    {
       "uuid": "<uuid>",
-      "displayed_name": "Foo",
+      "display_name": "Foo",
       "description": "Foo is the best instance forever",
       "dir_name": "foo",
       "icon": "<url-to-icon>"
@@ -204,7 +204,7 @@ pub struct NewConfiguration {
 [
    {
       "uuid": "<uuid>",
-      "displayed_name": "Low",
+      "display_name": "Low",
       "dir-name": "low",
       "icon": "<url-to-icon>",
       "description": "The Low config is used just to start a game"
