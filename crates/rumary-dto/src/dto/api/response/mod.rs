@@ -1,5 +1,4 @@
 mod client;
-mod profile;
 mod auth;
 mod ws;
 mod totp;

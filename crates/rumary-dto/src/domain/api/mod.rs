@@ -5,7 +5,6 @@ mod user;
 
 pub use {
     auth::*,
-    client::*,
     launch_args::*,
     user::*
 };
