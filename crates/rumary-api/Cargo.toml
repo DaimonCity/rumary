@@ -4,6 +4,7 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
+argon2.workspace = true
 async-trait.workspace = true
 axum.workspace = true
 reqwest.workspace = true
@@ -13,7 +14,18 @@ serde_json.workspace = true
 sqlx.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
+tracing.workspace = true
 uuid.workspace = true
 dns-lookup = "3.0.1"
+http = "1.4.0"
+jsonwebtoken = "10.4.0"
 
-rumary-dto = { path = "../rumary-dto", features = ["dto_api"] }
+axum-extra = { version = "0.12", features = ["typed-header", "cookie"] }
+dotenv = "0.15"
+rumary-dto = { path = "../rumary-dto", features = ["dto_api", "domain_api"] }
+bcrypt = "0.19.2"
+chacha20poly1305 = "0.11.0-rc.3"
+rand = "0.10"
+totp-rs = { version = "5.7.2", features = ["otpauth", "gen_secret"] }
+hex = "0.4.3"
+pretty_env_logger = "0.5"
