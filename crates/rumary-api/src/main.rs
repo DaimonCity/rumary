@@ -7,7 +7,6 @@ mod config;
 mod db;
 mod error;
 mod repository;
-mod services;
 mod state;
 mod util;
 mod auth;
