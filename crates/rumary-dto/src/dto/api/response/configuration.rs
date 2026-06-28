@@ -1,15 +1,13 @@
-use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
-use uuid::Uuid;
+use std::collections::HashMap;
 
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct ProfileDto {
-    pub id: Uuid,
-    pub name: String,
+pub struct ConfigurationDto {
+    pub display_name: String,
+    pub client_uuid: String,
+    pub dir_name: String,
     pub icon: String,
-    pub hard_check: Vec<FileInfoDto>,
-    pub soft_check: Vec<FileInfoDto>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]

@@ -20,7 +20,7 @@ use tokio::runtime::Runtime;
 use rumary_dto::domain::launcher::MinecraftLaunchArgs;
 use rumary_dto::domain::launcher::state::OsType;
 use rumary_dto::dto::api::response::LauncherClientDto;
-use rumary_dto::dto::api::response::ProfileDto;
+use rumary_dto::dto::api::response::ConfigurationDto;
 use rumary_dto::mojang::dto::response::{Version, VersionJson, VersionManifest};
 
 // channels for json
@@ -35,7 +35,7 @@ pub struct AppChannels {
         mpsc::Sender<Vec<LauncherClientDto>>,
         mpsc::Receiver<Vec<LauncherClientDto>>,
     ),
-    pub profiles: (mpsc::Sender<Vec<ProfileDto>>, mpsc::Receiver<Vec<ProfileDto>>),
+    pub profiles: (mpsc::Sender<Vec<ConfigurationDto>>, mpsc::Receiver<Vec<ConfigurationDto>>),
     pub launch: (mpsc::Sender<MinecraftLaunchArgs>, mpsc::Receiver<MinecraftLaunchArgs>),
     pub minecraft: (mpsc::Sender<VersionJson>, mpsc::Receiver<VersionJson>),
     pub validation_service: (
@@ -51,7 +51,7 @@ pub struct AppState {
     pub config: LauncherConfig,
     pub show_settings: bool,
     pub clients: Vec<LauncherClientDto>,
-    pub profiles: Vec<ProfileDto>,
+    pub profiles: Vec<ConfigurationDto>,
     pub versions: Vec<ChosenVersion>,
     pub selected_client: Option<usize>,
     pub selected_profile: Option<usize>,

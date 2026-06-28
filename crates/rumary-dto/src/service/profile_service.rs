@@ -1,5 +1,5 @@
 use crate::domain::launcher::{CheckDirs, FileInfo, Files, Profile};
-use crate::dto::api::response::{CheckDirsDto,  FileInfoDto, FilesDto, ProfileDto};
+use crate::dto::api::response::{CheckDirsDto,  FileInfoDto, FilesDto, ConfigurationDto};
 use std::error::Error;
 
 pub(crate) type ServiceResult<T> = Result<T, Box<dyn Error + Send + Sync>>;
@@ -14,7 +14,7 @@ pub(crate) fn string_to_hash(string: &str) -> ServiceResult<Vec<u8>> {
 }
 
 impl ProfileMapperService {
-    pub fn _build(&self, _dto: ProfileDto) -> ServiceResult<Profile> {
+    pub fn _build(&self, _dto: ConfigurationDto) -> ServiceResult<Profile> {
         todo!();
     }
 

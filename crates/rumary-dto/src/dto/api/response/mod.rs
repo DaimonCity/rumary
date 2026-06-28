@@ -1,7 +1,7 @@
 mod client;
-mod profile;
+mod configuration;
 
 pub use {
-    profile::*,
+    configuration::*,
     client::*
 };
