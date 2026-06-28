@@ -12,6 +12,7 @@ mod util;
 mod auth;
 mod totp;
 mod app;
+mod instances;
 
 #[tokio::main]
 async fn main() {
