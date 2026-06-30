@@ -1,5 +1,5 @@
 use crate::error::AppError;
-use crate::repository::TotpRepository;
+use crate::repo::repository::TotpRepository;
 use chacha20poly1305::aead::Aead;
 use chacha20poly1305::{ChaCha20Poly1305, Key, KeyInit, Nonce};
 use rand::TryRng;
@@ -117,24 +117,14 @@ impl TotpService {
 }
 
 fn encrypt(text: &[u8], key: [u8; 32]) -> Result<(String, String), AppError> {
-    let arr_key = match Key::try_from(key) {
-        Ok(k) => k,
-        Err(e) => return Err(AppError::Crypto(e.to_string())),
-    };
-
+    let arr_key = Key::from(key);
     let cipher = ChaCha20Poly1305::new(&arr_key);
     let mut nonce = [0u8; 12];
     SysRng
         .try_fill_bytes(&mut nonce)
         .map_err(|_| AppError::Crypto("failed to create nonce".parse().unwrap()))?;
 
-    let arr_nonce = match Nonce::try_from(nonce) {
-        Ok(nonce) => nonce,
-        Err(e) => {
-            return Err(AppError::Crypto(e.to_string()));
-        }
-    };
-
+    let arr_nonce = Nonce::from(nonce);
     let ciphertext = cipher
         .encrypt(&arr_nonce, text)
         .map_err(|_| AppError::Crypto("failed to encrypt totp secret".parse().unwrap()))?;
@@ -143,10 +133,7 @@ fn encrypt(text: &[u8], key: [u8; 32]) -> Result<(String, String), AppError> {
 }
 
 fn decrypt(ciphertext: &str, nonce: &str, key: [u8; 32]) -> Result<Vec<u8>, AppError> {
-    let arr_key = match Key::try_from(key) {
-        Ok(k) => k,
-        Err(e) => return Err(AppError::Crypto(e.to_string())),
-    };
+    let arr_key = Key::from(key);
 
     let ciphertext = hex::decode(ciphertext)
         .map_err(|_| AppError::Crypto("invalid encrypted totp secret".to_string()))?;
@@ -154,12 +141,7 @@ fn decrypt(ciphertext: &str, nonce: &str, key: [u8; 32]) -> Result<Vec<u8>, AppE
         hex::decode(nonce).map_err(|_| AppError::Crypto("invalid totp nonce".to_string()))?;
     let cipher = ChaCha20Poly1305::new(&arr_key);
 
-    let arr_nonce = match Nonce::try_from(nonce.as_slice()) {
-        Ok(nonce) => nonce,
-        Err(e) => {
-            return Err(AppError::Crypto(e.to_string()));
-        }
-    };
+    let arr_nonce= Nonce::from_iter(nonce);
     
     cipher
         .decrypt(&arr_nonce, ciphertext.as_slice())

@@ -1,4 +1,4 @@
-use crate::auth::{AuthenticatedUser, MaybeWorkerUser};
+use crate::service::auth::{AuthenticatedUser, MaybeWorkerUser};
 use crate::error::AppError;
 use crate::state::AppState;
 use axum::response::{IntoResponse, Response};
@@ -76,7 +76,7 @@ async fn login_totp(
     jar: CookieJar,
     Json(payload): Json<TotpLoginRequest>,
 ) -> Result<(CookieJar, Json<TokenResponse>), AppError> {
-    let tokens = state.auth.login_with_totp(payload, &state.totp).await?;
+    let tokens = state.auth.verify_totp(payload, &state.totp).await?;
     Ok((
         with_session_cookies(jar, &state, &tokens),
         Json(TokenResponse {

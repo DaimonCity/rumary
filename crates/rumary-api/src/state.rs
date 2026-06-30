@@ -1,10 +1,11 @@
 use std::sync::Arc;
-use crate::auth::AuthService;
-use crate::totp::TotpService;
+use crate::error::AppError;
+use crate::service::totp::TotpService;
+use crate::services::AuthProvider;
 
 #[derive(Clone)]
 pub struct AppState {
-    pub auth: Arc<AuthService>,
+    pub auth: Arc<dyn AuthProvider<Error=AppError>>,
     pub totp: Arc<TotpService>,
     pub secure_cookies: bool,
 }

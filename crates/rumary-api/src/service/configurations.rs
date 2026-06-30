@@ -1,5 +1,5 @@
 use crate::error::AppError;
-use crate::repository::ConfigurationRepo;
+use crate::repo::repository::ConfigurationRepo;
 use rumary_dto::domain::api::{Configuration, NewConfiguration};
 use rumary_dto::dto::api::response::ConfigurationDto;
 use std::sync::Arc;
@@ -13,7 +13,7 @@ impl ConfigurationService {
         Self { configuration_repo }
     }
 
-    pub fn create_configuration(&self, request: ConfigurationDto) -> Result<Configuration, AppError> {
+    pub async fn create_configuration(&self, request: ConfigurationDto) -> Result<Configuration, AppError> {
         let new_configuration = NewConfiguration {
             icon: request.icon,
             dir_name: request.dir_name,
@@ -21,6 +21,6 @@ impl ConfigurationService {
             client_uuid: request.client_uuid,
         };
 
-        self.configuration_repo.create_config(new_configuration)
+        self.configuration_repo.create_config(new_configuration).await
     }
 }

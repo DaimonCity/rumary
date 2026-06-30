@@ -1,13 +1,15 @@
 use crate::error::AppError;
-use crate::repository::{SessionRepository, TotpRepository, UserRepository};
+use crate::repo::repository::{SessionRepository, TotpRepository, UserRepository};
+use crate::service::totp::TotpService;
+use crate::services::AuthProvider;
 use crate::state::AppState;
-use crate::totp::TotpService;
+use async_trait::async_trait;
 use axum::extract::{FromRef, FromRequestParts};
 use bcrypt::{DEFAULT_COST, hash, verify};
 use chrono::{Duration, Utc};
 use http::header;
 use jsonwebtoken::{DecodingKey, EncodingKey, Header, Validation, decode, encode};
-use rumary_dto::domain::api::{AccessLevel, DeleteMeRequest, LoginOutcome, User};
+use rumary_dto::domain::api::{AccessLevel, LoginOutcome, User};
 use rumary_dto::domain::api::{NewUser, RefreshSessionUpdate};
 use rumary_dto::dto::api::request::{
     ClaimsRequest, LoginRequest, RegisterRequest, TotpLoginRequest, WsTicketClaimsRequest,
@@ -49,11 +51,13 @@ impl AuthService {
             ws_ticket_ttl_seconds,
         }
     }
+}
 
-    pub async fn register(
-        &self,
-        payload: RegisterRequest,
-    ) -> Result<SessionTokensResponse, AppError> {
+#[async_trait]
+impl AuthProvider for AuthService {
+    type Error = AppError;
+
+    async fn register(&self, payload: RegisterRequest) -> Result<SessionTokensResponse, AppError> {
         let password_hash = hash(payload.password, DEFAULT_COST)
             .map_err(|_| AppError::Crypto("failed to hash password".to_string()))?;
 
@@ -69,7 +73,7 @@ impl AuthService {
         self.issue_tokens(user.uuid).await
     }
 
-    pub async fn login(&self, payload: LoginRequest) -> Result<LoginOutcome, AppError> {
+    async fn login(&self, payload: LoginRequest) -> Result<LoginOutcome, AppError> {
         let user = self
             .user_repo
             .find_user_by_login(&payload.login)
@@ -95,7 +99,7 @@ impl AuthService {
         self.issue_tokens(user.uuid).await.map(LoginOutcome::Tokens)
     }
 
-    pub async fn login_with_totp(
+    async fn verify_totp(
         &self,
         payload: TotpLoginRequest,
         totp_service: &TotpService,
@@ -112,7 +116,7 @@ impl AuthService {
         self.issue_tokens(user.uuid).await
     }
 
-    pub async fn refresh(
+    async fn refresh(
         &self,
         refresh_token: &str,
         refresh_token_id: Uuid,
@@ -143,36 +147,70 @@ impl AuthService {
         self.issue_tokens(user.uuid).await
     }
 
-    pub async fn logout(&self, auth_user: &AuthenticatedUser) -> Result<(), AppError> {
+    async fn logout(&self, auth_user: &AuthenticatedUser) -> Result<(), AppError> {
         self.session_repo
             .clear_refresh_session(auth_user.uuid)
             .await?;
         Ok(())
     }
 
-    pub async fn delete_me(
-        &self,
-        auth_user: &AuthenticatedUser,
-        payload: DeleteMeRequest,
-    ) -> Result<(), AppError> {
+    async fn authenticate_access_token(&self, token: &str) -> Result<AuthenticatedUser, AppError> {
+        let claims = decode::<ClaimsRequest>(
+            token,
+            &DecodingKey::from_secret(self.jwt_secret.as_bytes()),
+            &Validation::default(),
+        )
+        .map_err(|_| AppError::Unauthorized("invalid access token".to_string()))?
+        .claims;
+
+        let user_uuid = Uuid::parse_str(&claims.sub)
+            .map_err(|_| AppError::Unauthorized("invalid access token".to_string()))?;
         let user = self
             .user_repo
-            .find_user(auth_user.uuid)
+            .find_user(user_uuid)
             .await?
             .ok_or(AppError::NotFound(
-                "totp user was not found while logging".to_string(),
+                "user was not found while auth token".to_string(),
             ))?;
 
-        let is_valid = verify(payload.password, &user.password_hash)
-            .map_err(|_| AppError::Crypto("failed to verify password".to_string()))?;
-        if !is_valid {
-            return Err(AppError::Unauthorized("invalid password".to_string()));
-        }
-
-        self.user_repo.delete_user(auth_user.uuid).await
+        Ok(AuthenticatedUser {
+            uuid: user.uuid,
+            access_level: claims.level.into(),
+        })
     }
 
-    pub async fn issue_ws_ticket(
+    async fn authenticate_ws_ticket(&self, ticket: &str) -> Result<AuthenticatedUser, AppError> {
+        let claims = decode::<WsTicketClaimsRequest>(
+            ticket,
+            &DecodingKey::from_secret(self.jwt_secret.as_bytes()),
+            &Validation::default(),
+        )
+        .map_err(|_| AppError::Unauthorized("invalid websocket ticket".to_string()))?
+        .claims;
+
+        if claims.purpose != "ws" {
+            return Err(AppError::Unauthorized(
+                "invalid websocket ticket".to_string(),
+            ));
+        }
+
+        let user_uuid = Uuid::parse_str(&claims.sub)
+            .map_err(|_| AppError::Unauthorized("invalid websocket ticket".to_string()))?;
+        let user = self
+            .user_repo
+            .find_user(user_uuid)
+            .await?
+            .ok_or(AppError::NotFound(
+                "user was not found in ws ticket".to_string(),
+            ))?;
+
+        Ok(AuthenticatedUser {
+            uuid: user.uuid,
+            access_level: claims.level.into(),
+        })
+    }
+
+    async fn issue_ws_ticket(
         &self,
         auth_user: &AuthenticatedUser,
     ) -> Result<WsTicketResponse, AppError> {
@@ -201,25 +239,6 @@ impl AuthService {
         .map_err(|_| AppError::Token("failed to encode websocket ticket".to_string()))?;
 
         Ok(WsTicketResponse { ws_ticket })
-    }
-
-    fn encode_access_token(&self, user: &User) -> Result<String, AppError> {
-        let now = Utc::now();
-        let exp = now + Duration::minutes(self.access_token_ttl_minutes);
-        let level = user.access_level.clone().into();
-        let claims = ClaimsResponse {
-            sub: user.uuid.to_string(),
-            level,
-            exp: exp.timestamp() as usize,
-            iat: now.timestamp() as usize,
-        };
-
-        encode(
-            &Header::default(),
-            &claims,
-            &EncodingKey::from_secret(self.jwt_secret.as_bytes()),
-        )
-        .map_err(|_| AppError::Token("failed to encode access token".to_string()))
     }
 
     async fn issue_tokens(&self, user_uuid: Uuid) -> Result<SessionTokensResponse, AppError> {
@@ -255,66 +274,23 @@ impl AuthService {
         })
     }
 
-    pub async fn authenticate_access_token(
-        &self,
-        token: &str,
-    ) -> Result<AuthenticatedUser, AppError> {
-        let claims = decode::<ClaimsRequest>(
-            token,
-            &DecodingKey::from_secret(self.jwt_secret.as_bytes()),
-            &Validation::default(),
+    fn encode_access_token(&self, user: &User) -> Result<String, AppError> {
+        let now = Utc::now();
+        let exp = now + Duration::minutes(self.access_token_ttl_minutes);
+        let level = user.access_level.into();
+        let claims = ClaimsResponse {
+            sub: user.uuid.to_string(),
+            level,
+            exp: exp.timestamp() as usize,
+            iat: now.timestamp() as usize,
+        };
+
+        encode(
+            &Header::default(),
+            &claims,
+            &EncodingKey::from_secret(self.jwt_secret.as_bytes()),
         )
-        .map_err(|_| AppError::Unauthorized("invalid access token".to_string()))?
-        .claims;
-
-        let user_uuid = Uuid::parse_str(&claims.sub)
-            .map_err(|_| AppError::Unauthorized("invalid access token".to_string()))?;
-        let user = self
-            .user_repo
-            .find_user(user_uuid)
-            .await?
-            .ok_or(AppError::NotFound(
-                "user was not found while auth token".to_string(),
-            ))?;
-
-        Ok(AuthenticatedUser {
-            uuid: user.uuid,
-            access_level: claims.level.into(),
-        })
-    }
-
-    pub async fn authenticate_ws_ticket(
-        &self,
-        ticket: &str,
-    ) -> Result<AuthenticatedUser, AppError> {
-        let claims = decode::<WsTicketClaimsRequest>(
-            ticket,
-            &DecodingKey::from_secret(self.jwt_secret.as_bytes()),
-            &Validation::default(),
-        )
-        .map_err(|_| AppError::Unauthorized("invalid websocket ticket".to_string()))?
-        .claims;
-
-        if claims.purpose != "ws" {
-            return Err(AppError::Unauthorized(
-                "invalid websocket ticket".to_string(),
-            ));
-        }
-
-        let user_uuid = Uuid::parse_str(&claims.sub)
-            .map_err(|_| AppError::Unauthorized("invalid websocket ticket".to_string()))?;
-        let user = self
-            .user_repo
-            .find_user(user_uuid)
-            .await?
-            .ok_or(AppError::NotFound(
-                "user was not found in ws ticket".to_string(),
-            ))?;
-
-        Ok(AuthenticatedUser {
-            uuid: user.uuid,
-            access_level: claims.level.into(),
-        })
+        .map_err(|_| AppError::Token("failed to encode access token".to_string()))
     }
 }
 

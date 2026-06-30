@@ -1,11 +1,11 @@
-use crate::api;
-use crate::auth::AuthService;
+use crate::service::api;
+use crate::service::auth::AuthService;
 use crate::config::Config;
-use crate::db::PostgresRepo;
+use crate::repo::db::PostgresRepo;
 use crate::error::AppError;
-use crate::repository::{SessionRepository, TotpRepository, UserRepository};
+use crate::repo::repository::{SessionRepository, TotpRepository, UserRepository};
 use crate::state::AppState;
-use crate::totp::TotpService;
+use crate::service::totp::TotpService;
 use sqlx::migrate::Migrator;
 use std::sync::Arc;
 

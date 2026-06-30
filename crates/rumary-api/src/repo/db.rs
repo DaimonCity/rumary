@@ -1,6 +1,6 @@
 use crate::config::DatabaseConfig;
 use crate::error::{AppError, AppResult};
-use crate::repository::{SessionRepository, TotpRepository, UserRepository};
+use crate::repo::repository::{SessionRepository, TotpRepository, UserRepository};
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use rumary_dto::domain::api::{
