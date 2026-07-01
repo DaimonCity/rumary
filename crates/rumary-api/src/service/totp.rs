@@ -12,13 +12,19 @@ use uuid::Uuid;
 
 #[derive(Clone)]
 pub struct TotpService {
-    repo: Arc<dyn TotpRepository<Error=AppError>>,
+    repo: Arc<dyn TotpRepository<Error = AppError>>,
     secret_key: [u8; 32],
 }
 
 impl TotpService {
-    pub fn new(repo: Arc<dyn TotpRepository<Error=AppError>>, secret_key: [u8; 32]) -> Self {
+    pub fn new(repo: Arc<dyn TotpRepository<Error = AppError>>, secret_key: [u8; 32]) -> Self {
         Self { repo, secret_key }
+    }
+
+    pub async fn is_enabled(&self, user_uuid: Uuid) -> AppResult<bool> {
+        Ok(self.repo
+            .find_totp_user(user_uuid)
+            .await?.is_some())
     }
 
     pub async fn enable_for_user(&self, user_uuid: Uuid) -> AppResult<TotpSetupResponse> {
@@ -141,8 +147,8 @@ fn decrypt(ciphertext: &str, nonce: &str, key: [u8; 32]) -> AppResult<Vec<u8>> {
         hex::decode(nonce).map_err(|_| AppError::Crypto("invalid totp nonce".to_string()))?;
     let cipher = ChaCha20Poly1305::new(&arr_key);
 
-    let arr_nonce= Nonce::from_iter(nonce);
-    
+    let arr_nonce = Nonce::from_iter(nonce);
+
     cipher
         .decrypt(&arr_nonce, ciphertext.as_slice())
         .map_err(|_| AppError::Crypto("failed to decrypt totp secret".to_string()))

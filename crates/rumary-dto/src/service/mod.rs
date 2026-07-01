@@ -1,4 +1,4 @@
 #[cfg(feature = "domain_launcher")]
-pub mod state;
+pub mod os;
 #[cfg(feature = "domain_api")]
 pub mod auth;

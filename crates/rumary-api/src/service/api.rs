@@ -20,7 +20,7 @@ const REFRESH_TOKEN_COOKIE: &str = "refresh_token";
 const REFRESH_TOKEN_ID_COOKIE: &str = "refresh_token_id";
 
 pub fn build_router(state: Arc<AppState>) -> Router {
-    Router::new()
+    Router::new() //REST API GPPD GET POST PUT DELETE
         .route("/health", get(health))
         .route("/api/v1/auth/register", post(register))
         .route("/api/v1/auth/login", post(login))

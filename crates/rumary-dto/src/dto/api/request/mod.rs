@@ -1,4 +1,3 @@
 mod auth;
-mod ws;
 
-pub use {auth::*, ws::*};
+pub use {auth::*};

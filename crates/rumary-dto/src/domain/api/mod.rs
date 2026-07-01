@@ -10,6 +10,7 @@ pub use {
 };
 mod loader;
 mod configuration;
+pub mod ws;
 
 pub use {
     instance::*,

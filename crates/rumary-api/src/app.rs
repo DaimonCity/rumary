@@ -60,14 +60,14 @@ impl Application {
             config.refresh_token_ttl_days,
             config.ws_ticket_ttl_seconds,
         ));
-        
+
         let totp = Arc::new(TotpService::new(
             totp_repo.clone(),
             config.totp_secret_key(),
         ));
 
         let user_profile = Arc::new(UserProfileService::new(user_repo, totp_repo));
-        
+
         let state = AppState {
             auth,
             user_profile,

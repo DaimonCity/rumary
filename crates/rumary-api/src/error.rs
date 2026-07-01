@@ -75,6 +75,7 @@ impl From<sqlx::Error> for AppError {
         Self::Database(value.to_string())
     }
 }
+
 impl From<std::fmt::Error> for AppError {
     fn from(err: std::fmt::Error) -> Self {
         AppError::Fmt(err)

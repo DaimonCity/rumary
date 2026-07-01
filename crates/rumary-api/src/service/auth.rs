@@ -11,14 +11,13 @@ use http::header;
 use jsonwebtoken::{DecodingKey, EncodingKey, Header, Validation, decode, encode};
 use rumary_dto::domain::api::{AccessLevel, LoginOutcome, User};
 use rumary_dto::domain::api::{NewUser, RefreshSessionUpdate};
-use rumary_dto::dto::api::request::{
-    ClaimsRequest, LoginRequest, RegisterRequest, TotpLoginRequest, WsTicketClaimsRequest,
-};
+use rumary_dto::dto::api::request::{ClaimsRequest, LoginRequest, RegisterRequest, TotpLoginRequest};
 use rumary_dto::dto::api::response::{
     ClaimsResponse, SessionTokensResponse, TotpRequiredResponse, WsTicketResponse,
 };
 use std::sync::Arc;
 use uuid::Uuid;
+use rumary_dto::domain::api::ws::WsTicketClaims;
 
 #[derive(Clone)]
 pub struct AuthService {
@@ -207,7 +206,7 @@ impl AuthProvider for AuthService {
     }
 
     async fn authenticate_ws_ticket(&self, ticket: &str) -> AppResult<AuthenticatedUser> {
-        let claims = decode::<WsTicketClaimsRequest>(
+        let claims = decode::<WsTicketClaims>(
             ticket,
             &DecodingKey::from_secret(self.jwt_secret.as_bytes()),
             &Validation::default(),
@@ -233,7 +232,7 @@ impl AuthProvider for AuthService {
 
         Ok(AuthenticatedUser {
             uuid: user.uuid,
-            access_level: claims.level.into(),
+            access_level: claims.level,
         })
     }
 
@@ -250,9 +249,9 @@ impl AuthProvider for AuthService {
             ))?;
         let now = Utc::now();
         let exp = now + Duration::seconds(self.ws_ticket_ttl_seconds);
-        let claims = WsTicketClaimsRequest {
+        let claims = WsTicketClaims {
             sub: user.uuid.to_string(),
-            level: user.access_level.into(),
+            level: user.access_level,
             purpose: "ws".to_string(),
             exp: exp.timestamp() as usize,
             iat: now.timestamp() as usize,

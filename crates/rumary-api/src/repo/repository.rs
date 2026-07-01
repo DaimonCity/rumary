@@ -4,6 +4,9 @@ use rumary_dto::domain::api::{
     NewTotpUser, NewUser, RefreshSessionUpdate, TotpUser, User, UserSession,
 };
 use uuid::Uuid;
+use rumary_dto::domain::api::{
+    Configuration, Instance, NewConfiguration, NewInstance, UpdateConfiguration, UpdateInstance,
+};
 
 #[async_trait]
 pub trait UserRepository: Send + Sync {
@@ -14,9 +17,7 @@ pub trait UserRepository: Send + Sync {
     async fn delete_user(&self, uuid: Uuid) -> Result<(), Self::Error>;
     async fn users_list(&self) -> Result<Vec<User>, Self::Error>;
 }
-use rumary_dto::domain::api::{
-    Configuration, Instance, NewConfiguration, NewInstance, UpdateConfiguration, UpdateInstance,
-};
+
 
 #[async_trait]
 pub trait InstanceRepository: Send + Sync {
@@ -71,3 +72,6 @@ pub trait SettingsRepository: Send + Sync {
     async fn get_configuration_dir_path(&self) -> Result<PathBuf, Self::Error>;
     async fn delete_totp_user(&self, uuid: Uuid) -> Result<(), Self::Error>;
 }
+
+#[async_trait]
+pub trait DiscordUserRepository: Send + Sync {}

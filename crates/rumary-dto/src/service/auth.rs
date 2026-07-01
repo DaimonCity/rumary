@@ -20,16 +20,6 @@ impl From<AccessLevel> for AccessLevelResponse {
     }
 }
 
-impl From<AccessLevel> for AccessLevelRequest {
-    fn from(request: AccessLevel) -> Self {
-        Self {
-            role_type: request.role_type.into(),
-            level: request.level,
-        }
-    }
-}
-
-
 macro_rules! impl_from_role {
     ($target:ident) => {
         impl From<RoleType> for $target {
@@ -47,7 +37,6 @@ macro_rules! impl_from_role {
     };
 }
 
-impl_from_role!(RoleTypeRequest);
 impl_from_role!(RoleTypeResponse);
 
 impl From<RoleTypeRequest> for RoleType {

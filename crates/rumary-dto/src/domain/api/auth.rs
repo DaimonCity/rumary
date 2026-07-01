@@ -1,5 +1,5 @@
 use chrono::{DateTime, Utc};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 use crate::dto::api::response::{SessionTokensResponse, TotpRequiredResponse};
 
@@ -16,7 +16,7 @@ pub struct RefreshSessionUpdate {
     pub expires_at: DateTime<Utc>,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum RoleType {
     User = 0,
     VipUser = 1,
@@ -26,7 +26,7 @@ pub enum RoleType {
     Owner = 5
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AccessLevel {
     pub role_type: RoleType,
     pub level: u8, // Конкретный уровень внутри промежутка

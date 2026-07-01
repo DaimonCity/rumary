@@ -1,10 +1,10 @@
 use serde::{Deserialize, Serialize};
-use crate::dto::api::request::auth::AccessLevelRequest;
+use crate::domain::api::AccessLevel;
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct WsTicketClaimsRequest {
+pub struct WsTicketClaims {
     pub sub: String,
-    pub level: AccessLevelRequest,
+    pub level: AccessLevel,
     pub purpose: String,
     pub exp: usize,
     pub iat: usize,
