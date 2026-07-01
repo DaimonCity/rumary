@@ -13,6 +13,9 @@ use rumary_dto::dto::api::request::{LoginRequest, RegisterRequest, TotpLoginRequ
 use rumary_dto::dto::api::response::{SessionTokensResponse, TokenResponse};
 use serde_json::json;
 use std::sync::Arc;
+use axum::body::Body;
+use axum::extract::Path;
+use http::HeaderMap;
 use uuid::Uuid;
 use crate::service::userprofile::ProfileResponse;
 
@@ -28,6 +31,7 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/api/v1/auth/refresh", post(refresh))
         .route("/api/v1/auth/logout", post(logout))
         .route("/api/v1/users/me", get(get_me).delete(delete_me))
+        .route("/api/v1/download/{namespace}/{filename}", get(download_file_handler))
         // .route("/api/v1/auth/ws-ticket", post(issue_ws_ticket))
         // .route("/api/users/{user_id}/ban", post(ban_user))
         // .route("/api/users/{user_id}/unban", post(unban_user))
@@ -133,6 +137,14 @@ async fn delete_me(
 ) -> AppResult<CookieJar> {
     state.user_profile.delete_me(auth_user.uuid, payload).await?;
     Ok(clear_session_cookies(jar, &state))
+}
+
+async fn download_file_handler(
+    Path((namespace, filename)): Path<(String, String)>,
+    headers: HeaderMap,
+    State(state): State<Arc<AppState>>,
+) -> AppResult<http::Response<Body>> {
+    state.file.stream_file(&namespace, &filename, &headers).await
 }
 
 fn with_session_cookies(

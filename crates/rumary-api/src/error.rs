@@ -3,6 +3,7 @@ use axum::{
     http::StatusCode,
     response::{IntoResponse, Response},
 };
+use http::Error;
 use serde::Serialize;
 use sqlx::migrate::MigrateError;
 use thiserror::Error;
@@ -35,6 +36,10 @@ pub enum AppError {
     Uuid(uuid::Error),
     #[error("fmt error: {0}")]
     Fmt(std::fmt::Error),
+    #[error("url error: {0}")]
+    Url(http::uri::InvalidUri),
+    #[error("http error: {0}")]
+    Http(http::Error),
 }
 
 #[derive(Debug, Serialize)]
@@ -57,6 +62,8 @@ impl IntoResponse for AppError {
             | Self::Fmt(_)
             | Self::Token(_)
             | Self::Io(_)
+            | Self::Url(_)
+            | Self::Http(_)
             | Self::Migration(_) => StatusCode::INTERNAL_SERVER_ERROR,
         };
 
@@ -94,6 +101,11 @@ impl From<MigrateError> for AppError {
     }
 }
 
+impl From<http::Error> for AppError {
+    fn from(value: Error) -> Self {
+        Self::Http(value)
+    }
+}
 
 
 pub type AppResult<T> = Result<T, AppError>;

@@ -6,3 +6,4 @@ pub mod auth;
 pub mod settings;
 pub mod roles;
 pub mod userprofile;
+pub mod file;

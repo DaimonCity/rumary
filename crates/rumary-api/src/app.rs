@@ -8,6 +8,7 @@ use crate::state::AppState;
 use crate::service::totp::TotpService;
 use sqlx::migrate::Migrator;
 use std::sync::Arc;
+use crate::service::file::FileService;
 use crate::service::userprofile::UserProfileService;
 
 pub struct Application {
@@ -67,10 +68,12 @@ impl Application {
         ));
 
         let user_profile = Arc::new(UserProfileService::new(user_repo, totp_repo));
-
+        let file = Arc::new(FileService::new());
+        
         let state = AppState {
             auth,
             user_profile,
+            file,
             totp,
             secure_cookies: config.secure_cookies,
         };
