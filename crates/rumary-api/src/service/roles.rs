@@ -1,4 +1,4 @@
-use crate::error::AppError;
+use crate::error::{AppError, AppResult};
 use std::collections::HashMap;
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
@@ -39,12 +39,12 @@ impl Rights {
         }
     }
 
-    pub fn get_right(&self, key: &RightKey) -> Result<RightId, AppError> {
+    pub fn get_right(&self, key: &RightKey) -> AppResult<RightId> {
         let index = self.get_index(key)?;
         Ok(self.rights_ids[index])
     }
 
-    fn get_index(&self, right_key: &RightKey) -> Result<usize, AppError> {
+    fn get_index(&self, right_key: &RightKey) -> AppResult<usize> {
         self.rights_keys
             .iter()
             .position(|i| i == right_key)
@@ -99,7 +99,7 @@ impl RoleService {
         }
     }
 
-    pub fn create_role(&mut self, name: &str) -> Result<(), AppError> {
+    pub fn create_role(&mut self, name: &str) -> AppResult<()> {
         let role = Role::new(
             name,
             &self.rights.rights_ids,
@@ -110,20 +110,20 @@ impl RoleService {
         Ok(())
     }
 
-    pub fn get_mut_role(&mut self, rid: &RoleId) -> Result<&mut Role, AppError> {
+    pub fn get_mut_role(&mut self, rid: &RoleId) -> AppResult<&mut Role> {
         let index = self.get_index(rid)?;
         self.roles
             .get_mut(index)
             .ok_or(AppError::NotFound("no such role".to_string()))
     }
-    pub fn get_role(&self, rid: &RoleId) -> Result<&Role, AppError> {
+    pub fn get_role(&self, rid: &RoleId) -> AppResult<&Role> {
         let index = self.get_index(rid)?;
         self.roles
             .get(index)
             .ok_or(AppError::NotFound("no such role".to_string()))
     }
 
-    pub fn remove_role(&mut self, rid: &RoleId) -> Result<(), AppError> {
+    pub fn remove_role(&mut self, rid: &RoleId) -> AppResult<()> {
         let index = self.get_index(rid)?;
 
         self.roles.remove(index);
@@ -131,7 +131,7 @@ impl RoleService {
         Ok(())
     }
 
-    pub fn is_available_action(&self, user_role_id: &RoleId, right_key: &RightKey) -> Result<bool, AppError> {
+    pub fn is_available_action(&self, user_role_id: &RoleId, right_key: &RightKey) -> AppResult<bool> {
         let role = self.get_role(user_role_id)?;
         let right_id = self.rights.get_right(right_key)?;
         let roles_rights = role.rights();
@@ -139,7 +139,7 @@ impl RoleService {
         Ok(roles_rights[&right_id])
     }
 
-    fn get_index(&self, rid: &RoleId) -> Result<usize, AppError> {
+    fn get_index(&self, rid: &RoleId) -> AppResult<usize> {
         self.roles_ids
             .iter()
             .position(|i| i == rid)

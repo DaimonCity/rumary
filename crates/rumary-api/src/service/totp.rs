@@ -1,4 +1,4 @@
-use crate::error::AppError;
+use crate::error::{AppError, AppResult};
 use crate::repo::repository::TotpRepository;
 use chacha20poly1305::aead::Aead;
 use chacha20poly1305::{ChaCha20Poly1305, Key, KeyInit, Nonce};
@@ -12,16 +12,16 @@ use uuid::Uuid;
 
 #[derive(Clone)]
 pub struct TotpService {
-    repo: Arc<dyn TotpRepository>,
+    repo: Arc<dyn TotpRepository<Error=AppError>>,
     secret_key: [u8; 32],
 }
 
 impl TotpService {
-    pub fn new(repo: Arc<dyn TotpRepository>, secret_key: [u8; 32]) -> Self {
+    pub fn new(repo: Arc<dyn TotpRepository<Error=AppError>>, secret_key: [u8; 32]) -> Self {
         Self { repo, secret_key }
     }
 
-    pub async fn enable_for_user(&self, user_uuid: Uuid) -> Result<TotpSetupResponse, AppError> {
+    pub async fn enable_for_user(&self, user_uuid: Uuid) -> AppResult<TotpSetupResponse> {
         let secret = Secret::generate_secret().to_string();
         let (encrypted_secret, nonce) = encrypt(secret.as_bytes(), self.secret_key)?;
 
@@ -49,7 +49,7 @@ impl TotpService {
         })
     }
 
-    pub async fn confirm_for_user(&self, user_uuid: Uuid, code: &str) -> Result<(), AppError> {
+    pub async fn confirm_for_user(&self, user_uuid: Uuid, code: &str) -> AppResult<()> {
         let user = self
             .repo
             .find_totp_user(user_uuid)
@@ -68,7 +68,7 @@ impl TotpService {
         Ok(())
     }
 
-    pub async fn delete_for_user(&self, user_uuid: Uuid, code: &str) -> Result<(), AppError> {
+    pub async fn delete_for_user(&self, user_uuid: Uuid, code: &str) -> AppResult<()> {
         let user = self
             .repo
             .find_totp_user(user_uuid)
@@ -89,7 +89,7 @@ impl TotpService {
     }
 
     //関数（引数）　ー＞　戻り値
-    pub fn verify_user_code(&self, user: &TotpUser, code: &str) -> Result<bool, AppError> {
+    pub fn verify_user_code(&self, user: &TotpUser, code: &str) -> AppResult<bool> {
         let encrypted_secret = user.totp.clone();
         let nonce = user.nonce.clone();
 
@@ -116,7 +116,7 @@ impl TotpService {
     }
 }
 
-fn encrypt(text: &[u8], key: [u8; 32]) -> Result<(String, String), AppError> {
+fn encrypt(text: &[u8], key: [u8; 32]) -> AppResult<(String, String)> {
     let arr_key = Key::from(key);
     let cipher = ChaCha20Poly1305::new(&arr_key);
     let mut nonce = [0u8; 12];
@@ -132,7 +132,7 @@ fn encrypt(text: &[u8], key: [u8; 32]) -> Result<(String, String), AppError> {
     Ok((hex::encode(ciphertext), hex::encode(arr_nonce)))
 }
 
-fn decrypt(ciphertext: &str, nonce: &str, key: [u8; 32]) -> Result<Vec<u8>, AppError> {
+fn decrypt(ciphertext: &str, nonce: &str, key: [u8; 32]) -> AppResult<Vec<u8>> {
     let arr_key = Key::from(key);
 
     let ciphertext = hex::decode(ciphertext)

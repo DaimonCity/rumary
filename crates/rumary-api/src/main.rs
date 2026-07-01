@@ -1,6 +1,7 @@
 use tracing::log;
 use crate::app::Application;
 use crate::config::Config;
+use crate::error::AppResult;
 
 mod config;
 mod error;
@@ -22,7 +23,7 @@ async fn main() {
     }
 }
 
-async fn run() -> Result<(), error::AppError> {
+async fn run() -> AppResult<()> {
     let config = Config::from_env()?;
     let app = Application::build(config).await?;
     app.run().await

@@ -1,4 +1,4 @@
-use crate::error::AppError;
+use crate::error::{AppError, AppResult};
 use std::env;
 
 #[derive(Clone)]
@@ -24,7 +24,7 @@ pub struct DatabaseConfig {
 }
 
 impl Config {
-    pub fn from_env() -> Result<Self, AppError> {
+    pub fn from_env() -> AppResult<Self> {
         let host = read_env("API_HOST", "0.0.0.0");
         let port = parse_env("API_PORT", "3000")?;
         let secure_cookies = parse_env("COOKIE_SECURE", "false")?;
@@ -70,7 +70,7 @@ impl Config {
     }
 }
 
-fn required_env(key: &str) -> Result<String, AppError> {
+fn required_env(key: &str) -> AppResult<String> {
     env::var(key).map_err(|_| AppError::Configuration(format!("missing required env var `{key}`")))
 }
 
@@ -78,7 +78,7 @@ fn read_env(key: &str, default: &str) -> String {
     env::var(key).unwrap_or_else(|_| default.to_string())
 }
 
-fn parse_env<T>(key: &str, default: &str) -> Result<T, AppError>
+fn parse_env<T>(key: &str, default: &str) -> AppResult<T>
 where
     T: std::str::FromStr,
     T::Err: std::fmt::Display,
