@@ -19,7 +19,7 @@ pub struct PostgresRepo {
 }
 
 impl PostgresRepo {
-    pub async fn connect(config: DatabaseConfig) -> Result<Self, AppError> {
+    pub async fn connect(config: DatabaseConfig) -> AppResult<Self> {
         let options = PgConnectOptions::new()
             .host(&config.host)
             .port(config.port)
@@ -42,6 +42,8 @@ impl PostgresRepo {
 }
 #[async_trait]
 impl UserRepository for PostgresRepo {
+    type Error = AppError;
+
     async fn create_user(&self, user: NewUser) -> AppResult<User> {
         todo!()
     }
@@ -64,6 +66,8 @@ impl UserRepository for PostgresRepo {
 }
 #[async_trait]
 impl TotpRepository for PostgresRepo {
+    type Error = AppError;
+
     async fn create_totp_user(&self, user: NewTotpUser) -> AppResult<TotpUser> {
         todo!()
     }
@@ -82,6 +86,8 @@ impl TotpRepository for PostgresRepo {
 }
 #[async_trait]
 impl SessionRepository for PostgresRepo {
+    type Error = AppError;
+
     async fn find_user_by_token_id(&self, token_uuid: Uuid) -> AppResult<Option<UserSession>> {
         todo!()
     }

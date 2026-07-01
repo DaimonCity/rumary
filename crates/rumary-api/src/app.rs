@@ -2,12 +2,13 @@ use crate::service::api;
 use crate::service::auth::AuthService;
 use crate::config::Config;
 use crate::repo::db::PostgresRepo;
-use crate::error::AppError;
+use crate::error::{AppError, AppResult};
 use crate::repo::repository::{SessionRepository, TotpRepository, UserRepository};
 use crate::state::AppState;
 use crate::service::totp::TotpService;
 use sqlx::migrate::Migrator;
 use std::sync::Arc;
+use crate::service::userprofile::UserProfileService;
 
 pub struct Application {
     config: Arc<Config>,
@@ -15,20 +16,20 @@ pub struct Application {
 }
 
 impl Application {
-    pub async fn build(config: Config) -> Result<Self, AppError> {
+    pub async fn build(config: Config) -> AppResult<Self> {
         let config = Arc::new(config);
         let repo = Arc::new(PostgresRepo::connect(config.database.clone()).await?);
         Self::run_migrations(&repo).await?;
 
-        let user_repo: Arc<dyn UserRepository> = repo.clone();
-        let totp_repo: Arc<dyn TotpRepository> = repo.clone();
-        let session_repo: Arc<dyn SessionRepository> = repo.clone();
+        let user_repo: Arc<dyn UserRepository<Error=AppError>> = repo.clone();
+        let totp_repo: Arc<dyn TotpRepository<Error=AppError>> = repo.clone();
+        let session_repo: Arc<dyn SessionRepository<Error=AppError>> = repo.clone();
         let state = Self::build_components(config.as_ref(), user_repo, totp_repo, session_repo)?;
 
         Ok(Self { config, state })
     }
 
-    pub async fn run(self) -> Result<(), AppError> {
+    pub async fn run(self) -> AppResult<()> {
         let listener = tokio::net::TcpListener::bind((self.config.host.as_str(), self.config.port))
             .await
             .map_err(AppError::Io)?;
@@ -38,7 +39,7 @@ impl Application {
             .map_err(AppError::Io)
     }
 
-    async fn run_migrations(repo: &PostgresRepo) -> Result<(), AppError> {
+    async fn run_migrations(repo: &PostgresRepo) -> AppResult<()> {
         let migrator = Migrator::new(std::path::Path::new("./migrations")).await?;
         migrator.run(&repo.get_pool()).await?;
         Ok(())
@@ -46,10 +47,10 @@ impl Application {
 
     fn build_components(
         config: &Config,
-        user_repo: Arc<dyn UserRepository>,
-        totp_repo: Arc<dyn TotpRepository>,
-        session_repo: Arc<dyn SessionRepository>,
-    ) -> Result<AppState, AppError> {
+        user_repo: Arc<dyn UserRepository<Error=AppError>>,
+        totp_repo: Arc<dyn TotpRepository<Error=AppError>>,
+        session_repo: Arc<dyn SessionRepository<Error=AppError>>,
+    ) -> AppResult<AppState> {
         let auth = Arc::new(AuthService::new(
             user_repo.clone(),
             session_repo.clone(),
@@ -59,13 +60,17 @@ impl Application {
             config.refresh_token_ttl_days,
             config.ws_ticket_ttl_seconds,
         ));
+        
         let totp = Arc::new(TotpService::new(
             totp_repo.clone(),
             config.totp_secret_key(),
         ));
 
+        let user_profile = Arc::new(UserProfileService::new(user_repo, totp_repo));
+        
         let state = AppState {
             auth,
+            user_profile,
             totp,
             secure_cookies: config.secure_cookies,
         };

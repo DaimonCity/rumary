@@ -1,5 +1,5 @@
 use crate::service::auth::{AuthenticatedUser, MaybeWorkerUser};
-use crate::error::AppError;
+use crate::error::{AppError, AppResult};
 use crate::state::AppState;
 use axum::response::{IntoResponse, Response};
 use axum::{
@@ -8,13 +8,13 @@ use axum::{
     routing::{get, post},
 };
 use axum_extra::extract::CookieJar;
-use axum_extra::extract::cookie::{Cookie, SameSite};
-use rumary_dto::domain::api::{LoginOutcome, RoleType};
+use axum_extra::extract::cookie::{Cookie, SameSite};use rumary_dto::domain::api::{DeleteMeRequest, LoginOutcome, RoleType};
 use rumary_dto::dto::api::request::{LoginRequest, RegisterRequest, TotpLoginRequest};
 use rumary_dto::dto::api::response::{SessionTokensResponse, TokenResponse};
 use serde_json::json;
 use std::sync::Arc;
 use uuid::Uuid;
+use crate::service::userprofile::ProfileResponse;
 
 const REFRESH_TOKEN_COOKIE: &str = "refresh_token";
 const REFRESH_TOKEN_ID_COOKIE: &str = "refresh_token_id";
@@ -24,9 +24,10 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/health", get(health))
         .route("/api/v1/auth/register", post(register))
         .route("/api/v1/auth/login", post(login))
-        .route("/api/v1/auth/login/totp", post(login_totp))
+        .route("/api/v1/auth/login/totp", post(verify_totp))
         .route("/api/v1/auth/refresh", post(refresh))
         .route("/api/v1/auth/logout", post(logout))
+        .route("/api/v1/users/me", get(get_me).delete(delete_me))
         // .route("/api/v1/auth/ws-ticket", post(issue_ws_ticket))
         // .route("/api/users/{user_id}/ban", post(ban_user))
         // .route("/api/users/{user_id}/unban", post(unban_user))
@@ -42,7 +43,7 @@ async fn register(
     jar: CookieJar,
     State(state): State<Arc<AppState>>,
     Json(payload): Json<RegisterRequest>,
-) -> Result<(CookieJar, Json<TokenResponse>), AppError> {
+) -> AppResult<(CookieJar, Json<TokenResponse>)> {
     let tokens = state.auth.register(payload).await?;
     Ok((
         with_session_cookies(jar, &state, &tokens),
@@ -56,7 +57,7 @@ async fn login(
     State(state): State<Arc<AppState>>,
     jar: CookieJar,
     Json(payload): Json<LoginRequest>,
-) -> Result<Response, AppError> {
+) -> AppResult<Response> {
     match state.auth.login(payload).await? {
         LoginOutcome::Tokens(tokens) => Ok((
             with_session_cookies(jar, &state, &tokens),
@@ -71,11 +72,11 @@ async fn login(
     }
 }
 
-async fn login_totp(
+async fn verify_totp(
     State(state): State<Arc<AppState>>,
     jar: CookieJar,
     Json(payload): Json<TotpLoginRequest>,
-) -> Result<(CookieJar, Json<TokenResponse>), AppError> {
+) -> AppResult<(CookieJar, Json<TokenResponse>)> {
     let tokens = state.auth.verify_totp(payload, &state.totp).await?;
     Ok((
         with_session_cookies(jar, &state, &tokens),
@@ -88,7 +89,7 @@ async fn login_totp(
 async fn refresh(
     State(state): State<Arc<AppState>>,
     jar: CookieJar,
-) -> Result<(CookieJar, Json<TokenResponse>), AppError> {
+) -> AppResult<(CookieJar, Json<TokenResponse>)> {
     let refresh_token = jar
         .get(REFRESH_TOKEN_COOKIE)
         .map(|cookie| cookie.value().to_string())
@@ -111,8 +112,26 @@ async fn logout(
     State(state): State<Arc<AppState>>,
     jar: CookieJar,
     auth_user: AuthenticatedUser,
-) -> Result<CookieJar, AppError> {
+) -> AppResult<CookieJar> {
     state.auth.logout(&auth_user).await?;
+    Ok(clear_session_cookies(jar, &state))
+}
+
+async fn get_me(
+    State(state): State<Arc<AppState>>,
+    auth_user: AuthenticatedUser,
+) -> AppResult<Json<ProfileResponse>> {
+    let profile = state.user_profile.me(auth_user.uuid).await?;
+    Ok(Json(profile))
+}
+
+async fn delete_me(
+    State(state): State<Arc<AppState>>,
+    jar: CookieJar,
+    auth_user: AuthenticatedUser,
+    Json(payload): Json<DeleteMeRequest>,
+) -> AppResult<CookieJar> {
+    state.user_profile.delete_me(auth_user.uuid, payload).await?;
     Ok(clear_session_cookies(jar, &state))
 }
 
