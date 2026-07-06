@@ -13,3 +13,19 @@ pub async fn get_domain() -> Result<String, Box<dyn std::error::Error>> {
     let host = dns_lookup::lookup_addr(&i)?;
     Ok(host)
 }
+
+pub fn normalize_path(path: &str) -> String {
+    path.replace('\\', "/")
+        .split('/')
+        .filter(|segment| !segment.is_empty() && *segment != ".")
+        .collect::<Vec<_>>()
+        .join("/")
+        .to_ascii_lowercase()
+}
+
+pub fn matches_rule(path: &str, rules: &[String]) -> bool {
+    rules.iter().any(|rule| {
+        let normalized_rule = normalize_path(rule);
+        path == normalized_rule || path.starts_with(&format!("{normalized_rule}/"))
+    })
+}

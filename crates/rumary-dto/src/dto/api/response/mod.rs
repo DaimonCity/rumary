@@ -1,13 +1,13 @@
-mod client;
 mod auth;
 mod ws;
 mod totp;
-mod configuration;
+pub mod instance;
+pub mod configuration;
 
 pub use {
     auth::*,
-    ws::*,
     totp::*,
+    ws::*,
     configuration::*,
-    client::*
+    instance::*,
 };

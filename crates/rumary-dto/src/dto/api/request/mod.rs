@@ -1,3 +1,9 @@
 mod auth;
+pub mod instance;
+pub mod configuration;
 
-pub use {auth::*};
+pub use {
+    auth::*,
+    configuration::*,
+    instance::*,
+};

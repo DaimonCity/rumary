@@ -19,8 +19,8 @@ use std::time::Duration;
 use tokio::runtime::Runtime;
 use rumary_dto::domain::launcher::MinecraftLaunchArgs;
 use rumary_dto::domain::launcher::state::OsType;
-use rumary_dto::dto::api::response::LauncherClientDto;
-use rumary_dto::dto::api::response::ConfigurationDto;
+use rumary_dto::dto::api::response::GetInstanceResponse;
+use rumary_dto::dto::api::response::GetConfigurationResponse;
 use rumary_dto::mojang::dto::response::{Version, VersionJson, VersionManifest};
 
 // channels for json
@@ -32,10 +32,10 @@ pub struct AppChannels {
         mpsc::Receiver<VersionManifest>,
     ),
     pub clients: (
-        mpsc::Sender<Vec<LauncherClientDto>>,
-        mpsc::Receiver<Vec<LauncherClientDto>>,
+        mpsc::Sender<Vec<GetInstanceResponse>>,
+        mpsc::Receiver<Vec<GetInstanceResponse>>,
     ),
-    pub profiles: (mpsc::Sender<Vec<ConfigurationDto>>, mpsc::Receiver<Vec<ConfigurationDto>>),
+    pub profiles: (mpsc::Sender<Vec<GetConfigurationResponse>>, mpsc::Receiver<Vec<GetConfigurationResponse>>),
     pub launch: (mpsc::Sender<MinecraftLaunchArgs>, mpsc::Receiver<MinecraftLaunchArgs>),
     pub minecraft: (mpsc::Sender<VersionJson>, mpsc::Receiver<VersionJson>),
     pub validation_service: (
@@ -50,8 +50,8 @@ pub struct AppState {
     pub translator: Translator,
     pub config: LauncherConfig,
     pub show_settings: bool,
-    pub clients: Vec<LauncherClientDto>,
-    pub profiles: Vec<ConfigurationDto>,
+    pub clients: Vec<GetInstanceResponse>,
+    pub profiles: Vec<GetConfigurationResponse>,
     pub versions: Vec<ChosenVersion>,
     pub selected_client: Option<usize>,
     pub selected_profile: Option<usize>,
