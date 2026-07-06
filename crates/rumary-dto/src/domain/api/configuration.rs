@@ -24,5 +24,5 @@ pub struct Configuration {
     pub icon: String,
     pub dir_name: String,
     pub display_name: String,
-    pub instance_uuid: String,
+    pub instance_uuid: Uuid,
 }

@@ -35,6 +35,7 @@ impl FileService {
         configuration_uuid: &Uuid,
         filepath: &Path,
         headers: &HeaderMap,
+        access_level: u16,
     ) -> AppResult<Response<Body>> {
         // 1. Ищем, зарегистрирована ли такая папка (пространство имен)
         // путь до папки instances, где все instance
@@ -46,11 +47,11 @@ impl FileService {
         // /home/rumary/instances/LeKRAFT Test
         let configuration = self
             .configuration_repo
-            .find_config(*configuration_uuid)
+            .get_config(*configuration_uuid, access_level)
             .await?;
         let instance = self
             .instance_repo
-            .find_instance(configuration.instance_uuid)
+            .get_instance(configuration.instance_uuid, access_level)
             .await?;
         let instance_path = root_path.join(instance.dir_name);
 

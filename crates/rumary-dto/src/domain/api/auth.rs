@@ -29,7 +29,7 @@ pub enum RoleType {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AccessLevel {
     pub role_type: RoleType,
-    pub level: u8, // Конкретный уровень внутри промежутка
+    pub level: u16, // Конкретный уровень внутри промежутка
 }
 
 #[derive(Debug, Deserialize)]

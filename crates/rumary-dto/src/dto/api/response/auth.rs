@@ -40,5 +40,5 @@ pub enum RoleTypeResponse {
 #[serde(rename_all = "snake_case")]
 pub struct AccessLevelResponse {
     pub role_type: RoleTypeResponse,
-    pub level: u8,
+    pub level: u16,
 }

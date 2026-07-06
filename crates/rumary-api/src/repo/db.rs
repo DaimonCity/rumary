@@ -141,7 +141,7 @@ impl InstanceRepository for PostgresRepo {
         todo!()
     }
 
-    async fn find_instance(&self, uuid: Uuid) -> Result<Instance, Self::Error> {
+    async fn get_instance(&self, uuid: Uuid, access_level: u16) -> Result<Instance, Self::Error> {
         todo!()
     }
 
@@ -171,7 +171,7 @@ impl ConfigurationRepository for PostgresRepo {
         todo!()
     }
 
-    async fn find_config(&self, uuid: Uuid) -> Result<Configuration, Self::Error> {
+    async fn get_config(&self, uuid: Uuid, access_level: u16) -> Result<Configuration, Self::Error> {
         todo!()
     }
 
@@ -179,7 +179,7 @@ impl ConfigurationRepository for PostgresRepo {
         todo!()
     }
 
-    async fn get_list_configs(&self, access_level: u16) -> Result<Vec<Configuration>, Self::Error> {
+    async fn list_configs(&self, instance_uuid: Uuid, access_level: u16) -> Result<Vec<Configuration>, Self::Error> {
         todo!()
     }
 }

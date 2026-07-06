@@ -153,10 +153,11 @@ async fn download_file_handler(
     Path((config_uuid, filepath)): Path<(Uuid, PathBuf)>,
     headers: HeaderMap,
     State(state): State<Arc<AppState>>,
+    authenticated_user: AuthenticatedUser,
 ) -> AppResult<http::Response<Body>> {
     state
         .file
-        .stream_file(&config_uuid, &filepath, &headers)
+        .stream_file(&config_uuid, &filepath, &headers, authenticated_user.access_level.level)
         .await
 }
 
@@ -202,7 +203,7 @@ fn clear_session_cookies(jar: CookieJar, state: &AppState) -> CookieJar {
         .remove(refresh_token_id_cookie)
 }
 
-fn _include_unavailable(maybe_user: MaybeWorkerUser, level: u8) -> bool {
+fn _include_unavailable(maybe_user: MaybeWorkerUser, level: u16) -> bool {
     maybe_user
         .0
         .map(|user| match user.access_level.role_type {

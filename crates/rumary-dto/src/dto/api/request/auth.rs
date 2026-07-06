@@ -16,7 +16,7 @@ pub enum RoleTypeRequest {
 #[serde(rename_all = "snake_case")]
 pub struct AccessLevelRequest {
     pub role_type: RoleTypeRequest,
-    pub level: u8,
+    pub level: u16,
 }
 #[derive(Debug, Deserialize)]
 pub struct RegisterRequest {
