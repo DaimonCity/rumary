@@ -22,9 +22,7 @@ impl TotpService {
     }
 
     pub async fn is_enabled(&self, user_uuid: Uuid) -> AppResult<bool> {
-        Ok(self.repo
-            .find_totp_user(user_uuid)
-            .await?.is_some())
+        Ok(self.repo.find_totp_user(user_uuid).await?.is_some())
     }
 
     pub async fn enable_for_user(&self, user_uuid: Uuid) -> AppResult<TotpSetupResponse> {

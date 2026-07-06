@@ -1,10 +1,31 @@
-use std::path::PathBuf;
+use std::path::Path;
 use std::sync::Arc;
-use crate::error::AppError;
+use crate::error::{AppError, AppResult};
 use crate::repo::repository::SettingsRepository;
 
 pub struct SettingsService {
     settings_repo: Arc<dyn SettingsRepository<Error=AppError>>,
-    configuration_dir_path: PathBuf,
+}
+
+
+impl SettingsService {
+    pub fn new(settings_repo: Arc<dyn SettingsRepository<Error=AppError>>) -> Self {
+        Self {
+            settings_repo
+        }
+    }
+
+    pub async fn add_instance_path(&self, path: &Path) -> AppResult<()> {
+        self.settings_repo.save_instance_dir_path(path).await
+    }
+
+    pub async fn edit_instance_path(&self, path: &Path) -> AppResult<()> {
+        self.remove_instance_path().await?;
+        self.settings_repo.save_instance_dir_path(path).await
+    }
+    pub async fn remove_instance_path(&self) -> AppResult<()> {
+        drop(self.settings_repo.delete_instances_dir_path().await?);
+        Ok(())
+    }
 }
 

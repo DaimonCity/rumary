@@ -1,8 +1,8 @@
 use crate::error::AppError;
+use crate::service::file::FileService;
 use crate::service::totp::TotpService;
 use crate::services::{AuthProvider, UserProfileProvider};
 use std::sync::Arc;
-use crate::service::file::FileService;
 
 #[derive(Clone)]
 pub struct AppState {

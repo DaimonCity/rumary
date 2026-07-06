@@ -1,60 +1,71 @@
 use crate::error::{AppError, AppResult};
+use crate::repo::repository::{ConfigurationRepository, InstanceRepository, SettingsRepository};
 use axum::{
     body::Body,
-    http::{HeaderMap, Response, StatusCode, header},
+    http::{HeaderMap, Response},
 };
-use std::collections::HashMap;
-use std::path::PathBuf;
+use http::{StatusCode, header};
+use std::path::Path;
+use std::sync::Arc;
 use tokio::fs::File;
 use tokio_util::io::ReaderStream;
+use uuid::Uuid;
 
 pub struct FileService {
-    namespaces: HashMap<String, PathBuf>,
-}
-
-impl Default for FileService {
-    fn default() -> Self {
-        Self::new()
-    }
+    configuration_repo: Arc<dyn ConfigurationRepository<Error = AppError>>,
+    instance_repo: Arc<dyn InstanceRepository<Error = AppError>>,
+    settings_repo: Arc<dyn SettingsRepository<Error = AppError>>,
 }
 
 impl FileService {
-    pub fn new() -> Self {
+    pub fn new(
+        configuration_repo: Arc<dyn ConfigurationRepository<Error = AppError>>,
+        instance_repo: Arc<dyn InstanceRepository<Error = AppError>>,
+        settings_repo: Arc<dyn SettingsRepository<Error = AppError>>,
+    ) -> Self {
         Self {
-            namespaces: HashMap::new(),
+            configuration_repo,
+            instance_repo,
+            settings_repo,
         }
-    }
-
-    // Метод для регистрации папок при старте приложения
-    pub fn register_namespace(mut self, name: &str, path: &str) -> Self {
-        self.namespaces
-            .insert(name.to_string(), PathBuf::from(path));
-        self
     }
 
     pub async fn stream_file(
         &self,
-        namespace: &str,
-        filename: &str,
+        configuration_uuid: &Uuid,
+        filepath: &Path,
         headers: &HeaderMap,
     ) -> AppResult<Response<Body>> {
-        // 1. Валидация имени файла от Directory Traversal
-        if filename.contains("..") || filename.contains('/') || filename.contains('\\') {
-            return Err(AppError::Validation("Forbidden path".into()));
-        }
+        // 1. Ищем, зарегистрирована ли такая папка (пространство имен)
+        // путь до папки instances, где все instance
+        // root_path -> /home/rumary/instances/
+        let root_path = self.settings_repo.get_instances_dir_path().await?;
 
-        // 2. Ищем, зарегистрирована ли такая папка (пространство имен)
-        let base_path = self.namespaces.get(namespace).ok_or_else(|| {
-            AppError::Internal(format!("FileService: namespace '{}' not found", namespace))
-        })?;
-        let file_path = base_path.join(filename);
+        // /home/rumary/instances/LeKRAFT 1.0
+        // /home/rumary/instances/LeKRAFT 2.0
+        // /home/rumary/instances/LeKRAFT Test
+        let configuration = self
+            .configuration_repo
+            .find_config(*configuration_uuid)
+            .await?;
+        let instance = self
+            .instance_repo
+            .find_instance(configuration.instance_uuid)
+            .await?;
+        let instance_path = root_path.join(instance.dir_name);
 
-        // 3. Проверяем метаданные файла
+        // /home/rumary/instances/LeKRAFT 1.0/Potato
+        // /home/rumary/instances/LeKRAFT 1.0/Medium
+        // /home/rumary/instances/LeKRAFT 1.0/High
+        let configuration_path = instance_path.join(configuration.dir_name);
+        let file_path = configuration_path.join(filepath);
+
+        // 2. Проверяем метаданные файла
         let metadata = tokio::fs::metadata(&file_path)
             .await
             .map_err(|_| AppError::NotFound("FileService: metadata is lost".to_string()))?;
 
-        // 4. Логика HTTP-кэширования (ETag) для файлов 10-100 МБ
+        // 3. Логика HTTP-кэширования (ETag) для файлов 10-100 МБ
         // Безопасно получаем ETag, если ОС поддерживает время модификации файла
         let etag = match metadata.modified() {
             Ok(modified) => {
@@ -76,17 +87,18 @@ impl FileService {
                 .body(Body::empty())?);
         }
 
-        // 5. Открываем и стримим файл чанками
+        // 4. Открываем и стримим файл чанками
         let file = File::open(file_path).await.map_err(|e| match e.kind() {
             std::io::ErrorKind::NotFound => {
                 AppError::NotFound("FileService: file not found".to_string())
             }
             _ => AppError::Internal(e.to_string()),
         })?;
+
         let stream = ReaderStream::new(file);
         let body = Body::from_stream(stream);
 
-        // 6. Формируем ответ
+        // 5. Формируем ответ
         let mut response_builder = Response::builder()
             .status(StatusCode::OK)
             .header(header::CONTENT_TYPE, "application/octet-stream")

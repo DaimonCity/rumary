@@ -1,16 +1,16 @@
-use tracing::log;
 use crate::app::Application;
 use crate::config::Config;
 use crate::error::AppResult;
+use tracing::log;
 
+mod app;
 mod config;
 mod error;
+mod repo;
+mod service;
+mod services;
 mod state;
 mod util;
-mod app;
-pub mod service;
-pub mod repo;
-pub mod services;
 
 #[tokio::main]
 async fn main() {

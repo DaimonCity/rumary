@@ -25,13 +25,17 @@ impl RoleId {
 }
 
 pub struct Rights {
-    rights_ids: Vec<RightId>,     // unique -> private
+    rights_ids: Vec<RightId>,   // unique -> private
     rights_keys: Vec<RightKey>, // unique -> public, format: <>.<>.<>
-    default_values: Vec<bool>,   // true or false
+    default_values: Vec<bool>,  // true or false
 }
 
 impl Rights {
-    pub fn new(rights_ids: Vec<RightId>, rights_keys: Vec<RightKey>, default_values: Vec<bool>) -> Self {
+    pub fn new(
+        rights_ids: Vec<RightId>,
+        rights_keys: Vec<RightKey>,
+        default_values: Vec<bool>,
+    ) -> Self {
         Self {
             rights_ids,
             rights_keys,
@@ -100,11 +104,7 @@ impl RoleService {
     }
 
     pub fn create_role(&mut self, name: &str) -> AppResult<()> {
-        let role = Role::new(
-            name,
-            &self.rights.rights_ids,
-            &self.rights.default_values,
-        );
+        let role = Role::new(name, &self.rights.rights_ids, &self.rights.default_values);
         self.increment_roles_ids();
         self.roles.push(role);
         Ok(())
@@ -131,7 +131,11 @@ impl RoleService {
         Ok(())
     }
 
-    pub fn is_available_action(&self, user_role_id: &RoleId, right_key: &RightKey) -> AppResult<bool> {
+    pub fn is_available_action(
+        &self,
+        user_role_id: &RoleId,
+        right_key: &RightKey,
+    ) -> AppResult<bool> {
         let role = self.get_role(user_role_id)?;
         let right_id = self.rights.get_right(right_key)?;
         let roles_rights = role.rights();

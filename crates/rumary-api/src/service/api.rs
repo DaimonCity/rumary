@@ -1,6 +1,9 @@
-use crate::service::auth::{AuthenticatedUser, MaybeWorkerUser};
 use crate::error::{AppError, AppResult};
+use crate::service::auth::{AuthenticatedUser, MaybeWorkerUser};
+use crate::service::userprofile::ProfileResponse;
 use crate::state::AppState;
+use axum::body::Body;
+use axum::extract::Path;
 use axum::response::{IntoResponse, Response};
 use axum::{
     Json, Router,
@@ -8,16 +11,15 @@ use axum::{
     routing::{get, post},
 };
 use axum_extra::extract::CookieJar;
-use axum_extra::extract::cookie::{Cookie, SameSite};use rumary_dto::domain::api::{DeleteMeRequest, LoginOutcome, RoleType};
+use axum_extra::extract::cookie::{Cookie, SameSite};
+use http::HeaderMap;
+use rumary_dto::domain::api::{DeleteMeRequest, LoginOutcome, RoleType};
 use rumary_dto::dto::api::request::{LoginRequest, RegisterRequest, TotpLoginRequest};
 use rumary_dto::dto::api::response::{SessionTokensResponse, TokenResponse};
 use serde_json::json;
+use std::path::PathBuf;
 use std::sync::Arc;
-use axum::body::Body;
-use axum::extract::Path;
-use http::HeaderMap;
 use uuid::Uuid;
-use crate::service::userprofile::ProfileResponse;
 
 const REFRESH_TOKEN_COOKIE: &str = "refresh_token";
 const REFRESH_TOKEN_ID_COOKIE: &str = "refresh_token_id";
@@ -31,7 +33,10 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/api/v1/auth/refresh", post(refresh))
         .route("/api/v1/auth/logout", post(logout))
         .route("/api/v1/users/me", get(get_me).delete(delete_me))
-        .route("/api/v1/download/{namespace}/{filename}", get(download_file_handler))
+        .route(
+            "/api/v1/download/{config_uuid}/{filepath}",
+            get(download_file_handler),
+        )
         // .route("/api/v1/auth/ws-ticket", post(issue_ws_ticket))
         // .route("/api/users/{user_id}/ban", post(ban_user))
         // .route("/api/users/{user_id}/unban", post(unban_user))
@@ -101,7 +106,9 @@ async fn refresh(
     let refresh_token_id = jar
         .get(REFRESH_TOKEN_ID_COOKIE)
         .and_then(|cookie| Uuid::parse_str(cookie.value()).ok())
-        .ok_or(AppError::Unauthorized("missing refresh token id".to_string()))?;
+        .ok_or(AppError::Unauthorized(
+            "missing refresh token id".to_string(),
+        ))?;
 
     let tokens = state.auth.refresh(&refresh_token, refresh_token_id).await?;
     Ok((
@@ -135,16 +142,22 @@ async fn delete_me(
     auth_user: AuthenticatedUser,
     Json(payload): Json<DeleteMeRequest>,
 ) -> AppResult<CookieJar> {
-    state.user_profile.delete_me(auth_user.uuid, payload).await?;
+    state
+        .user_profile
+        .delete_me(auth_user.uuid, payload)
+        .await?;
     Ok(clear_session_cookies(jar, &state))
 }
 
 async fn download_file_handler(
-    Path((namespace, filename)): Path<(String, String)>,
+    Path((config_uuid, filepath)): Path<(Uuid, PathBuf)>,
     headers: HeaderMap,
     State(state): State<Arc<AppState>>,
 ) -> AppResult<http::Response<Body>> {
-    state.file.stream_file(&namespace, &filename, &headers).await
+    state
+        .file
+        .stream_file(&config_uuid, &filepath, &headers)
+        .await
 }
 
 fn with_session_cookies(

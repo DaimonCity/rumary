@@ -9,21 +9,23 @@ use bcrypt::{DEFAULT_COST, hash, verify};
 use chrono::{Duration, Utc};
 use http::header;
 use jsonwebtoken::{DecodingKey, EncodingKey, Header, Validation, decode, encode};
+use rumary_dto::domain::api::ws::WsTicketClaims;
 use rumary_dto::domain::api::{AccessLevel, LoginOutcome, User};
 use rumary_dto::domain::api::{NewUser, RefreshSessionUpdate};
-use rumary_dto::dto::api::request::{ClaimsRequest, LoginRequest, RegisterRequest, TotpLoginRequest};
+use rumary_dto::dto::api::request::{
+    ClaimsRequest, LoginRequest, RegisterRequest, TotpLoginRequest,
+};
 use rumary_dto::dto::api::response::{
     ClaimsResponse, SessionTokensResponse, TotpRequiredResponse, WsTicketResponse,
 };
 use std::sync::Arc;
 use uuid::Uuid;
-use rumary_dto::domain::api::ws::WsTicketClaims;
 
 #[derive(Clone)]
 pub struct AuthService {
-    user_repo: Arc<dyn UserRepository<Error=AppError>>,
-    session_repo: Arc<dyn SessionRepository<Error=AppError>>,
-    totp_repo: Arc<dyn TotpRepository<Error=AppError>>,
+    user_repo: Arc<dyn UserRepository<Error = AppError>>,
+    session_repo: Arc<dyn SessionRepository<Error = AppError>>,
+    totp_repo: Arc<dyn TotpRepository<Error = AppError>>,
     jwt_secret: String,
     access_token_ttl_minutes: i64,
     refresh_token_ttl_days: i64,
@@ -32,9 +34,9 @@ pub struct AuthService {
 
 impl AuthService {
     pub fn new(
-        user_repo: Arc<dyn UserRepository<Error=AppError>>,
-        session_repo: Arc<dyn SessionRepository<Error=AppError>>,
-        totp_repo: Arc<dyn TotpRepository<Error=AppError>>,
+        user_repo: Arc<dyn UserRepository<Error = AppError>>,
+        session_repo: Arc<dyn SessionRepository<Error = AppError>>,
+        totp_repo: Arc<dyn TotpRepository<Error = AppError>>,
         jwt_secret: String,
         access_token_ttl_minutes: i64,
         refresh_token_ttl_days: i64,
@@ -100,7 +102,7 @@ impl AuthService {
             &claims,
             &EncodingKey::from_secret(self.jwt_secret.as_bytes()),
         )
-            .map_err(|_| AppError::Token("failed to encode access token".to_string()))
+        .map_err(|_| AppError::Token("failed to encode access token".to_string()))
     }
 }
 
@@ -236,10 +238,7 @@ impl AuthProvider for AuthService {
         })
     }
 
-    async fn issue_ws_ticket(
-        &self,
-        auth_user: &AuthenticatedUser,
-    ) -> AppResult<WsTicketResponse> {
+    async fn issue_ws_ticket(&self, auth_user: &AuthenticatedUser) -> AppResult<WsTicketResponse> {
         let user = self
             .user_repo
             .find_user(auth_user.uuid)

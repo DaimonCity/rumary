@@ -1,15 +1,20 @@
 use crate::config::DatabaseConfig;
 use crate::error::{AppError, AppResult};
-use crate::repo::repository::{SessionRepository, TotpRepository, UserRepository};
+use crate::repo::repository::{
+    ConfigurationRepository, InstanceRepository, SessionRepository, SettingsRepository,
+    TotpRepository, UserRepository,
+};
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use rumary_dto::domain::api::{
-    NewTotpUser, NewUser, RefreshSessionUpdate, TotpUser, User, UserSession,
+    Configuration, Instance, NewConfiguration, NewInstance, NewTotpUser, NewUser,
+    RefreshSessionUpdate, TotpUser, UpdateConfiguration, UpdateInstance, User, UserSession,
 };
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 use sqlx::postgres::{PgConnectOptions, PgPoolOptions};
 use sqlx::{PgPool, Pool, Postgres, Row};
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 use uuid::Uuid;
 
@@ -101,6 +106,80 @@ impl SessionRepository for PostgresRepo {
     }
 
     async fn clear_refresh_session(&self, user_uuid: Uuid) -> AppResult<()> {
+        todo!()
+    }
+}
+
+#[async_trait]
+impl SettingsRepository for PostgresRepo {
+    type Error = AppError;
+
+    async fn save_instance_dir_path(&self, path: &Path) -> Result<(), Self::Error> {
+        todo!()
+    }
+
+    async fn get_instances_dir_path(&self) -> Result<PathBuf, Self::Error> {
+        todo!()
+    }
+
+    async fn delete_instances_dir_path(&self) -> Result<PathBuf, Self::Error> {
+        todo!()
+    }
+}
+#[async_trait]
+impl InstanceRepository for PostgresRepo {
+    type Error = AppError;
+
+    async fn create_instance(&self, new_instance: NewInstance) -> Result<Instance, Self::Error> {
+        todo!()
+    }
+
+    async fn update_instance(
+        &self,
+        update_instance: UpdateInstance,
+    ) -> Result<Instance, Self::Error> {
+        todo!()
+    }
+
+    async fn find_instance(&self, uuid: Uuid) -> Result<Instance, Self::Error> {
+        todo!()
+    }
+
+    async fn delete_instance(&self, uuid: Uuid) -> Result<(), Self::Error> {
+        todo!()
+    }
+
+    async fn list_instances(&self, access_level: u16) -> Result<Vec<Instance>, Self::Error> {
+        todo!()
+    }
+}
+#[async_trait]
+impl ConfigurationRepository for PostgresRepo {
+    type Error = AppError;
+
+    async fn create_config(
+        &self,
+        new_config: NewConfiguration,
+    ) -> Result<Configuration, Self::Error> {
+        todo!()
+    }
+
+    async fn update_config(
+        &self,
+        update_instance: UpdateConfiguration,
+    ) -> Result<Configuration, Self::Error> {
+        todo!()
+    }
+
+    async fn find_config(&self, uuid: Uuid) -> Result<Configuration, Self::Error> {
+        todo!()
+    }
+
+    async fn delete_config(&self, uuid: Uuid) -> Result<(), Self::Error> {
+        todo!()
+    }
+
+    async fn get_list_configs(&self, access_level: u16) -> Result<Vec<Configuration>, Self::Error> {
         todo!()
     }
 }
