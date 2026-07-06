@@ -1,39 +1,36 @@
-use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-
+use serde::{Deserialize, Serialize};
+use uuid::Uuid;
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct ConfigurationDto {
-    pub display_name: String,
-    pub client_uuid: String,
-    pub dir_name: String,
+pub struct ConfigurationsResponse {
+    pub configurations: Vec<GetConfigurationResponse>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct GetConfigurationResponse {
+    pub uuid: Uuid,
     pub icon: String,
+    pub dir_name: String,
+    pub display_name: String,
+    pub instance_uuid: String,
+
+    pub hard_dirs: Vec<String>,
+    pub soft_dirs: Vec<String>,
+    pub files: HashMap<String, File>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct CheckDirsDto {
-    #[serde(flatten)]
-    pub dirs: HashMap<String, FilesDto>
+pub struct File {
+    sha1: String,
+
+    #[serde(rename = "ruma_serde::time::ms_since_unix_epoch")]
+    _type: FileType,
+    url: String,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct FilesDto {
-    #[serde(flatten)]
-    pub files: HashMap<String, FileInfoDto>
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct FileInfoDto {
-    pub sha1: String,
-    #[serde(rename = "type")]
-    pub _type: CheckTypeDto,
-    pub path: String,
-    pub url: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum CheckTypeDto {
+pub enum FileType {
     Required,
     Optional,
 }

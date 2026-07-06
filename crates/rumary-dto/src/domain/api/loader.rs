@@ -10,11 +10,11 @@ pub enum Loader {
 }
 
 impl Loader {
-    pub fn from_strings(loader: String, loader_version: String) -> Self {
+    pub fn from_strings(loader: String, loader_version: Option<String>) -> Self {
         match loader.to_lowercase().as_str() {
-            "forge" => Forge(loader_version),
-            "fabric" => Fabric(loader_version),
-            "neoforge" => NeoForge(loader_version),
+            "forge" => Forge(loader_version.unwrap_or("missing".into())),
+            "fabric" => Fabric(loader_version.unwrap_or("missing".into())),
+            "neoforge" => NeoForge(loader_version.unwrap_or("missing".into())),
             _ => Vanilla,
         }
     }

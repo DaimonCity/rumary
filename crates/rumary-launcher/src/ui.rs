@@ -2,7 +2,7 @@ use crate::app::AppState;
 use crate::util;
 use crate::validation::ValidationService;
 use rumary_dto::domain::launcher::{ChosenVersion, MinecraftLaunchArgs};
-use rumary_dto::dto::api::response::{LauncherClientDto, ConfigurationDto};
+use rumary_dto::dto::api::response::{GetInstanceResponse, GetConfigurationResponse};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::env;
@@ -32,7 +32,7 @@ impl AppState {
 
         self.rt.spawn(async move {
             if let Ok(response) = util::get_response(&reqwest_client, &url).await
-                && let Ok(clients) = response.json::<Vec<LauncherClientDto>>().await
+                && let Ok(clients) = response.json::<Vec<GetInstanceResponse>>().await
             {
                 let _ = tx.send(clients);
             }
@@ -48,7 +48,7 @@ impl AppState {
 
         self.rt.spawn(async move {
             if let Ok(response) = util::get_response(&reqwest_client, &url).await
-                && let Ok(profiles) = response.json::<Vec<ConfigurationDto>>().await
+                && let Ok(profiles) = response.json::<Vec<GetConfigurationResponse>>().await
             {
                 let _ = tx.send(profiles);
             }

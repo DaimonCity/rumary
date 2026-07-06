@@ -1,12 +1,12 @@
 mod model;
-mod profile;
-mod client;
+mod configuration;
+mod instance;
 mod check;
 pub mod state;
 
 pub use {
     model::*,
-    profile::*,
-    client::*,
+    configuration::*,
+    instance::*,
     check::*,
 };

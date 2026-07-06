@@ -26,9 +26,22 @@ pub trait InstanceRepository: Send + Sync {
         &self,
         update_instance: UpdateInstance,
     ) -> Result<Instance, Self::Error>;
-    async fn find_instance(&self, uuid: Uuid) -> Result<Instance, Self::Error>;
+    async fn get_instance(&self, uuid: Uuid, access_level: u16) -> Result<Instance, Self::Error>;
     async fn delete_instance(&self, uuid: Uuid) -> Result<(), Self::Error>;
     async fn list_instances(&self, access_level: u16) -> Result<Vec<Instance>, Self::Error>;
+}
+
+#[async_trait]
+pub trait ConfigurationRepository: Send + Sync {
+    type Error;
+    async fn create_config(&self, new_config: NewConfiguration) -> Result<Configuration, Self::Error>;
+    async fn update_config(
+        &self,
+        update_instance: UpdateConfiguration,
+    ) -> Result<Configuration, Self::Error>;
+    async fn get_config(&self, uuid: Uuid, access_level: u16) -> Result<Configuration, Self::Error>;
+    async fn delete_config(&self, uuid: Uuid) -> Result<(), Self::Error>;
+    async fn list_configs(&self, instance_uuid: Uuid, access_level: u16) -> Result<Vec<Configuration>, Self::Error>;
 }
 
 #[async_trait]
@@ -44,22 +57,6 @@ pub trait SessionRepository: Send + Sync {
         session: RefreshSessionUpdate,
     ) -> Result<(), Self::Error>;
     async fn clear_refresh_session(&self, user_uuid: Uuid) -> Result<(), Self::Error>;
-}
-
-#[async_trait]
-pub trait ConfigurationRepository: Send + Sync {
-    type Error;
-    async fn create_config(
-        &self,
-        new_config: NewConfiguration,
-    ) -> Result<Configuration, Self::Error>;
-    async fn update_config(
-        &self,
-        update_instance: UpdateConfiguration,
-    ) -> Result<Configuration, Self::Error>;
-    async fn find_config(&self, uuid: Uuid) -> Result<Configuration, Self::Error>;
-    async fn delete_config(&self, uuid: Uuid) -> Result<(), Self::Error>;
-    async fn get_list_configs(&self, access_level: u16) -> Result<Vec<Configuration>, Self::Error>;
 }
 
 #[async_trait]
