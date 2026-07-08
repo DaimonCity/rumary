@@ -4,6 +4,7 @@ mod instances;
 mod configurations;
 pub mod auth;
 pub mod settings;
-pub mod roles;
+pub mod roles_archived;
 pub mod userprofile;
 pub mod file;
+pub mod role;

@@ -17,6 +17,9 @@ use sqlx::{PgPool, Pool, Postgres, Row};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 use uuid::Uuid;
+use rumary_dto::domain::configuration::ConfigurationId;
+use rumary_dto::domain::instance::InstanceId;
+use rumary_dto::domain::user::UserId;
 
 #[derive(Clone)]
 pub struct PostgresRepo {
@@ -53,7 +56,7 @@ impl UserRepository for PostgresRepo {
         todo!()
     }
 
-    async fn find_user(&self, uuid: Uuid) -> AppResult<Option<User>> {
+    async fn find_user(&self, user_id: UserId) -> AppResult<Option<User>> {
         todo!()
     }
 
@@ -61,7 +64,7 @@ impl UserRepository for PostgresRepo {
         todo!()
     }
 
-    async fn delete_user(&self, uuid: Uuid) -> AppResult<()> {
+    async fn delete_user(&self, user_id: UserId) -> AppResult<()> {
         todo!()
     }
 
@@ -77,15 +80,15 @@ impl TotpRepository for PostgresRepo {
         todo!()
     }
 
-    async fn totp_user_confirmed(&self, uuid: Uuid) -> AppResult<TotpUser> {
+    async fn totp_user_confirmed(&self, user_id: UserId) -> AppResult<TotpUser> {
         todo!()
     }
 
-    async fn find_totp_user(&self, uuid: Uuid) -> AppResult<Option<TotpUser>> {
+    async fn find_totp_user(&self, user_id: UserId) -> AppResult<Option<TotpUser>> {
         todo!()
     }
 
-    async fn delete_totp_user(&self, uuid: Uuid) -> AppResult<()> {
+    async fn delete_totp_user(&self, user_id: UserId) -> AppResult<()> {
         todo!()
     }
 }
@@ -93,19 +96,19 @@ impl TotpRepository for PostgresRepo {
 impl SessionRepository for PostgresRepo {
     type Error = AppError;
 
-    async fn find_user_by_token_id(&self, token_uuid: Uuid) -> AppResult<Option<UserSession>> {
+    async fn find_user_by_token_id(&self, token_id: Uuid) -> AppResult<Option<UserSession>> {
         todo!()
     }
 
     async fn save_refresh_session(
         &self,
-        user_uuid: Uuid,
+        user_id: UserId,
         session: RefreshSessionUpdate,
     ) -> AppResult<()> {
         todo!()
     }
 
-    async fn clear_refresh_session(&self, user_uuid: Uuid) -> AppResult<()> {
+    async fn clear_refresh_session(&self, user_id: UserId) -> AppResult<()> {
         todo!()
     }
 }
@@ -141,11 +144,11 @@ impl InstanceRepository for PostgresRepo {
         todo!()
     }
 
-    async fn get_instance(&self, uuid: Uuid, access_level: u16) -> Result<Instance, Self::Error> {
+    async fn get_instance(&self, id: InstanceId, access_level: u16) -> Result<Instance, Self::Error> {
         todo!()
     }
 
-    async fn delete_instance(&self, uuid: Uuid) -> Result<(), Self::Error> {
+    async fn delete_instance(&self, id: InstanceId) -> Result<(), Self::Error> {
         todo!()
     }
 
@@ -164,22 +167,19 @@ impl ConfigurationRepository for PostgresRepo {
         todo!()
     }
 
-    async fn update_config(
-        &self,
-        update_instance: UpdateConfiguration,
-    ) -> Result<Configuration, Self::Error> {
+    async fn update_config(&self, id: ConfigurationId, update_instance: UpdateConfiguration) -> Result<Configuration, Self::Error> {
         todo!()
     }
 
-    async fn get_config(&self, uuid: Uuid, access_level: u16) -> Result<Configuration, Self::Error> {
+    async fn get_config(&self, id: ConfigurationId, access_level: u16) -> Result<Configuration, Self::Error> {
         todo!()
     }
 
-    async fn delete_config(&self, uuid: Uuid) -> Result<(), Self::Error> {
+    async fn delete_config(&self, id: ConfigurationId) -> Result<(), Self::Error> {
         todo!()
     }
 
-    async fn list_configs(&self, instance_uuid: Uuid, access_level: u16) -> Result<Vec<Configuration>, Self::Error> {
+    async fn list_configs(&self, instance_id: InstanceId, access_level: u16) -> Result<Vec<Configuration>, Self::Error> {
         todo!()
     }
 }
@@ -190,16 +190,12 @@ fn _json<T: Serialize>(value: &T) -> AppResult<sqlx::types::Json<serde_json::Val
         .map_err(|err| AppError::Internal(err.to_string()))
 }
 
-fn _from_json<T: DeserializeOwned>(value: sqlx::types::Json<serde_json::Value>) -> AppResult<T> {
-    serde_json::from_value(value.0).map_err(|err| AppError::Database(err.to_string()))
-}
-
 fn _map_conflict(entity: &'static str) -> impl Fn(sqlx::Error) -> AppError {
     move |err| match &err {
         sqlx::Error::Database(db_err) if db_err.is_unique_violation() => {
             AppError::Conflict(format!("{entity} already exists"))
         }
-        _ => AppError::Database(err.to_string()),
+        _ => AppError::Database(err),
     }
 }
 

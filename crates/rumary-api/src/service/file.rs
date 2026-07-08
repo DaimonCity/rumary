@@ -9,7 +9,7 @@ use std::path::Path;
 use std::sync::Arc;
 use tokio::fs::File;
 use tokio_util::io::ReaderStream;
-use uuid::Uuid;
+use rumary_dto::domain::configuration::ConfigurationId;
 
 pub struct FileService {
     configuration_repo: Arc<dyn ConfigurationRepository<Error = AppError>>,
@@ -32,7 +32,7 @@ impl FileService {
 
     pub async fn stream_file(
         &self,
-        configuration_uuid: &Uuid,
+        configuration_uuid: ConfigurationId,
         filepath: &Path,
         headers: &HeaderMap,
         access_level: u16,
@@ -47,11 +47,11 @@ impl FileService {
         // /home/rumary/instances/LeKRAFT Test
         let configuration = self
             .configuration_repo
-            .get_config(*configuration_uuid, access_level)
+            .get_config(configuration_uuid, access_level)
             .await?;
         let instance = self
             .instance_repo
-            .get_instance(configuration.instance_uuid, access_level)
+            .get_instance(configuration.instance_id, access_level)
             .await?;
         let instance_path = root_path.join(instance.dir_name);
 

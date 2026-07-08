@@ -1,7 +1,7 @@
-use chrono::{DateTime, Utc};
-use serde::{Deserialize, Serialize};
-use uuid::Uuid;
+use crate::domain::auth::expiration_time::ExpirationTime;
+use crate::domain::value_object::auth::tokens::{TokenHash, TokenId};
 use crate::dto::api::response::{SessionTokensResponse, TotpRequiredResponse};
+use serde::{Deserialize, Serialize};
 
 
 pub enum LoginOutcome {
@@ -11,28 +11,21 @@ pub enum LoginOutcome {
 
 #[derive(Clone, Debug)]
 pub struct RefreshSessionUpdate {
-    pub token_id: Uuid,
-    pub refresh_token_hash: String,
-    pub expires_at: DateTime<Utc>,
+    pub token_id: TokenId,
+    pub refresh_token_hash: TokenHash,
+    pub expires_at: ExpirationTime,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum RoleType {
     User = 0,
     VipUser = 1,
-    Builder = 2,
-    Writer = 3,
-    Admin = 4,
-    Owner = 5
+    Worker = 2,
+    Owner = 3,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AccessLevel {
     pub role_type: RoleType,
     pub level: u16, // Конкретный уровень внутри промежутка
-}
-
-#[derive(Debug, Deserialize)]
-pub struct DeleteMeRequest {
-    pub password: String,
 }

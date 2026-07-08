@@ -1,59 +1,83 @@
 use crate::error::{AppError, AppResult};
 use crate::repo::repository::InstanceRepository;
 use rumary_dto::domain::api::{Instance, Loader, NewInstance, UpdateInstance};
-use rumary_dto::dto::api::request::{GetInstanceRequest, NewInstanceRequest, UpdateInstanceRequest};
+use rumary_dto::domain::name::{Description, DirectoryName, DisplayName};
+use rumary_dto::domain::url::IconUrl;
+use rumary_dto::domain::version::Version;
+use rumary_dto::dto::api::request::{
+    GetInstanceRequest, NewInstanceRequest, UpdateInstanceRequest,
+};
+use rumary_dto::dto::api::response::GetInstanceResponse;
 use std::sync::Arc;
 
 pub struct InstanceService {
-    instance_repo: Arc<dyn InstanceRepository<Error=AppError>>,
+    instance_repo: Arc<dyn InstanceRepository<Error = AppError>>,
 }
 
 impl InstanceService {
-    pub(crate) fn new(instance_repo: Arc<dyn InstanceRepository<Error=AppError>>) -> Self {
-        Self {instance_repo }
+    pub(crate) fn new(instance_repo: Arc<dyn InstanceRepository<Error = AppError>>) -> Self {
+        Self { instance_repo }
     }
 
     pub async fn create_instance(&self, request: NewInstanceRequest) -> AppResult<Instance> {
+        let version = request.version.try_into()?;
+        let loader_version = request.loader_version.map(Version::try_from).transpose()?;
         let new_instance = NewInstance {
-            icon: request.icon,
-            dir_name: request.dir_name,
-            display_name: request.display_name,
-            version: request.version,
-            description: request.description,
-            loader: Loader::from_strings(request.loader, request.loader_version),
+            icon: request.icon.try_into()?,
+            dir_name: request.dir_name.try_into()?,
+            display_name: request.display_name.try_into()?,
+            version,
+            description: request.description.try_into()?,
+            loader: Loader::from_string(request.loader, loader_version)?,
         };
 
         self.instance_repo.create_instance(new_instance).await
     }
 
     pub async fn update_instance(&self, request: UpdateInstanceRequest) -> AppResult<Instance> {
-        let loader = match request.loader {
-            Some(ref l) if l != "vanilla" && request.loader_version.is_none() => {
-                return Err(AppError::Internal("Missing loader_version field".into()));
-            }
-            Some(l) => Some(Loader::from_strings(l, request.loader_version)),
-            None => None,
+        let loader = if let Some(loader) = request.loader {
+            let loader_version = request.loader_version.map(Version::try_from).transpose()?;
+            Some(Loader::from_string(loader, loader_version)?)
+        } else {
+            None
         };
 
+        let icon = request.icon.map(IconUrl::try_from).transpose()?;
+        let dir_name = request.dir_name.map(DirectoryName::try_from).transpose()?;
+        let display_name = request
+            .display_name
+            .map(DisplayName::try_from)
+            .transpose()?;
+        let version = request.version.map(Version::try_from).transpose()?;
+        let description = request.description.map(Description::try_from).transpose()?;
 
-        let new_instance = UpdateInstance {
-            uuid: request.uuid,
-            icon: request.icon,
-            dir_name: request.dir_name,
-            display_name: request.display_name,
-            version: request.version,
-            description: request.description,
-            loader
+        let update_instance = UpdateInstance {
+            icon,
+            dir_name,
+            display_name,
+            version,
+            description,
+            loader,
         };
 
-        self.instance_repo.update_instance(new_instance).await
+        self.instance_repo.update_instance(update_instance).await
     }
-    
-    pub async fn get_instance(&self, request: GetInstanceRequest, access_level: u16) -> AppResult<Instance> {
-        self.instance_repo.get_instance(request.instance_uuid, access_level).await
+    /// instance.<instance-uuid>.get
+    pub async fn get_instance(
+        &self,
+        request: GetInstanceRequest,
+        access_level: u16,
+    ) -> AppResult<GetInstanceResponse> {
+        let instance = self
+            .instance_repo
+            .get_instance(request.instance_id.into(), access_level)
+            .await?;
+        Ok(instance.into())
     }
-    
-    pub async fn list_instances(&self, access_level: u16) -> AppResult<Vec<Instance>> {
-        self.instance_repo.list_instances(access_level).await
+
+    /// instance.<instance-uuid>.list
+    pub async fn list_instances(&self, access_level: u16) -> AppResult<Vec<GetInstanceResponse>> {
+        let instances = self.instance_repo.list_instances(access_level).await?;
+        Ok(instances.into_iter().map(|i| i.into()).collect())
     }
 }

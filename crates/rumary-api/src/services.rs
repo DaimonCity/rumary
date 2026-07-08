@@ -2,10 +2,11 @@ use crate::service::auth::AuthenticatedUser;
 use crate::service::totp::TotpService;
 use crate::service::userprofile::ProfileResponse;
 use async_trait::async_trait;
-use rumary_dto::domain::api::{DeleteMeRequest, LoginOutcome};
-use rumary_dto::dto::api::request::{LoginRequest, RegisterRequest, TotpLoginRequest};
+use rumary_dto::domain::api::LoginOutcome;
+use rumary_dto::dto::api::request::{DeleteMeRequest, LoginRequest, RegisterRequest, TotpLoginRequest};
 use rumary_dto::dto::api::response::{SessionTokensResponse, WsTicketResponse};
 use uuid::Uuid;
+use rumary_dto::domain::user::UserId;
 
 #[async_trait]
 pub trait AuthProvider: Send + Sync {
@@ -15,7 +16,7 @@ pub trait AuthProvider: Send + Sync {
         payload: RegisterRequest,
     ) -> Result<SessionTokensResponse, Self::Error>; // +
 
-    async fn login(&self, payload: LoginRequest) -> Result<LoginOutcome, Self::Error>; // +
+    async fn login(&self, payload: LoginRequest, totp_service: &TotpService) -> Result<LoginOutcome, Self::Error>; // +
     async fn verify_totp(
         &self,
         payload: TotpLoginRequest,
@@ -44,7 +45,7 @@ pub trait AuthProvider: Send + Sync {
 #[async_trait]
 pub trait UserProfileProvider: Send + Sync {
     type Error;
-    async fn me(&self, user_uuid: Uuid) -> Result<ProfileResponse, Self::Error>;
-    async fn delete_me(&self, user_uuid: Uuid, payload: DeleteMeRequest)
+    async fn me(&self, user_id: UserId) -> Result<ProfileResponse, Self::Error>;
+    async fn delete_me(&self, user_id: UserId, payload: DeleteMeRequest)
     -> Result<(), Self::Error>;
 }

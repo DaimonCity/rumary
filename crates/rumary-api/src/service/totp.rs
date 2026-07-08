@@ -4,11 +4,11 @@ use chacha20poly1305::aead::Aead;
 use chacha20poly1305::{ChaCha20Poly1305, Key, KeyInit, Nonce};
 use rand::TryRng;
 use rand::rngs::SysRng;
-use rumary_dto::domain::api::{NewTotpUser, TotpUser};
+use rumary_dto::domain::api::NewTotpUser;
+use rumary_dto::domain::user::UserId;
 use rumary_dto::dto::api::response::TotpSetupResponse;
 use std::sync::Arc;
 use totp_rs::{Algorithm, Secret, TOTP};
-use uuid::Uuid;
 
 #[derive(Clone)]
 pub struct TotpService {
@@ -21,16 +21,16 @@ impl TotpService {
         Self { repo, secret_key }
     }
 
-    pub async fn is_enabled(&self, user_uuid: Uuid) -> AppResult<bool> {
-        Ok(self.repo.find_totp_user(user_uuid).await?.is_some())
+    pub async fn is_enabled(&self, user_id: UserId) -> AppResult<bool> {
+        Ok(self.repo.find_totp_user(user_id).await?.is_some())
     }
 
-    pub async fn enable_for_user(&self, user_uuid: Uuid) -> AppResult<TotpSetupResponse> {
+    pub async fn enable_for_user(&self, user_id: UserId) -> AppResult<TotpSetupResponse> {
         let secret = Secret::generate_secret().to_string();
         let (encrypted_secret, nonce) = encrypt(secret.as_bytes(), self.secret_key)?;
 
         let new_totp_user = NewTotpUser {
-            uuid: user_uuid,
+            user_id: user_id.into(),
             encrypted_secret,
             nonce,
         };
@@ -53,37 +53,20 @@ impl TotpService {
         })
     }
 
-    pub async fn confirm_for_user(&self, user_uuid: Uuid, code: &str) -> AppResult<()> {
-        let user = self
-            .repo
-            .find_totp_user(user_uuid)
-            .await?
-            .ok_or(AppError::NotFound(
-                "totp user not found in confirming".to_string(),
-            ))?;
-
-        let res = self.verify_user_code(&user, code)?;
-
+    pub async fn confirm_for_user(&self, user_id: UserId, code: &str) -> AppResult<()> {
+        let res = self.verify_user_code(user_id, code).await?;
         if res {
-            self.repo.totp_user_confirmed(user.uuid).await?;
+            self.repo.totp_user_confirmed(user_id).await?;
         } else {
-            self.repo.delete_totp_user(user.uuid).await?;
+            self.repo.delete_totp_user(user_id).await?;
         }
         Ok(())
     }
 
-    pub async fn delete_for_user(&self, user_uuid: Uuid, code: &str) -> AppResult<()> {
-        let user = self
-            .repo
-            .find_totp_user(user_uuid)
-            .await?
-            .ok_or(AppError::NotFound(
-                "totp user not found in deleting".to_string(),
-            ))?;
-
-        let res = self.verify_user_code(&user, code)?;
+    pub async fn delete_for_user(&self, user_id: UserId, code: &str) -> AppResult<()> {
+        let res = self.verify_user_code(user_id, code).await?;
         if res {
-            self.repo.delete_totp_user(user.uuid).await?;
+            self.repo.delete_totp_user(user_id).await?;
             Ok(())
         } else {
             Err(AppError::NotFound(
@@ -93,7 +76,15 @@ impl TotpService {
     }
 
     //関数（引数）　ー＞　戻り値
-    pub fn verify_user_code(&self, user: &TotpUser, code: &str) -> AppResult<bool> {
+    pub async fn verify_user_code(&self, user_id: UserId, code: &str) -> AppResult<bool> {
+        let user = self
+            .repo
+            .find_totp_user(user_id)
+            .await?
+            .ok_or(AppError::NotFound(
+                "totp user not found in deleting".to_string(),
+            ))?;
+
         let encrypted_secret = user.totp.clone();
         let nonce = user.nonce.clone();
 

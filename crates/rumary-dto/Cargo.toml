@@ -11,6 +11,8 @@ serde.workspace = true
 uuid.workspace = true
 url = "2.5.8"
 chrono = "0.4.45"
+semver = "1.0.28"
+bcrypt = "0.19.2"
 
 
 [features]

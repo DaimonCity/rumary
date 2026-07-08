@@ -1,5 +1,5 @@
-use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use uuid::Uuid;
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -9,11 +9,11 @@ pub struct ConfigurationsResponse {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct GetConfigurationResponse {
-    pub uuid: Uuid,
+    pub id: Uuid,
     pub icon: String,
     pub dir_name: String,
     pub display_name: String,
-    pub instance_uuid: String,
+    pub instance_id: Uuid,
 
     pub hard_dirs: Vec<String>,
     pub soft_dirs: Vec<String>,
@@ -23,7 +23,6 @@ pub struct GetConfigurationResponse {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct File {
     sha1: String,
-
     #[serde(rename = "ruma_serde::time::ms_since_unix_epoch")]
     _type: FileType,
     url: String,

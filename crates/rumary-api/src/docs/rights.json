@@ -1,0 +1,27 @@
+{
+  "settings": {
+    "instance_path": {
+      "set": true,
+      "remove": true
+    }
+  },
+  "configuration": {
+    "uuid": {
+      "create": true,
+      "update": true,
+      "get": true,
+      "list": true,
+      "delete": true,
+      "download": true
+    }
+  },
+  "instance" : {
+    "uuid": {
+      "create": true,
+      "update": true,
+      "get": true,
+      "list": true,
+      "delete": true
+    }
+  }
+}

@@ -3,7 +3,7 @@ use uuid::Uuid;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ConfigurationsRequest {
-    pub instance_uuid: Uuid,
+    pub instance_id: Uuid
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -11,19 +11,18 @@ pub struct NewConfigurationRequest {
     pub icon: String,
     pub dir_name: String,
     pub display_name: String,
-    pub instance_uuid: String,
+    pub instance_id: Uuid,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct UpdateConfigurationRequest {
-    pub uuid: Uuid,
     pub icon: Option<String>,
     pub dir_name: Option<String>,
     pub display_name: Option<String>,
-    pub instance_uuid: Option<String>,
+    pub instance_id: Option<Uuid>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct GetConfigurationRequest {
-    pub configuration_uuid: Uuid,
+    pub configuration_id: Uuid,
 }

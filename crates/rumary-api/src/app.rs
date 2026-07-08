@@ -13,6 +13,7 @@ use crate::service::userprofile::UserProfileService;
 use crate::state::AppState;
 use sqlx::migrate::Migrator;
 use std::sync::Arc;
+use crate::service::settings::SettingsService;
 
 pub struct Application {
     config: Arc<Config>,
@@ -75,7 +76,6 @@ impl Application {
         let auth = Arc::new(AuthService::new(
             repositories.user_repo.clone(),
             repositories.session_repo.clone(),
-            repositories.totp_repo.clone(),
             config.jwt_secret.clone(),
             config.access_token_ttl_minutes,
             config.refresh_token_ttl_days,
@@ -94,7 +94,11 @@ impl Application {
         let file = Arc::new(FileService::new(
             repositories.configuration_repo,
             repositories.instance_repo,
-            repositories.settings_repo,
+            repositories.settings_repo.clone(),
+        ));
+
+        let settings = Arc::new(SettingsService::new(
+            repositories.settings_repo
         ));
 
         let state = AppState {
@@ -102,6 +106,7 @@ impl Application {
             user_profile,
             file,
             totp,
+            settings,
             secure_cookies: config.secure_cookies,
         };
 

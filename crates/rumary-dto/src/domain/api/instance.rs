@@ -1,35 +1,33 @@
-use uuid::Uuid;
 use crate::domain::api::loader::Loader;
+use crate::domain::instance::InstanceId;
+use crate::domain::name::{Description, DirectoryName, DisplayName};
+use crate::domain::url::IconUrl;
+use crate::domain::value_object::version::Version;
 
 pub struct NewInstance {
-    pub icon: String,
-    pub dir_name: String,
-    pub display_name: String,
-    pub version: String,
-    pub description: String,
+    pub icon: IconUrl,
+    pub dir_name: DirectoryName,
+    pub display_name: DisplayName,
+    pub version: Version,
+    pub description: Description,
     pub loader: Loader
 }
 
 pub struct UpdateInstance {
-    pub uuid: Uuid,
-    pub icon: Option<String>,
-    pub dir_name: Option<String>,
-    pub display_name: Option<String>,
-    pub version: Option<String>,
-    pub description: Option<String>,
+    pub icon: Option<IconUrl>,
+    pub dir_name: Option<DirectoryName>,
+    pub display_name: Option<DisplayName>,
+    pub version: Option<Version>,
+    pub description: Option<Description>,
     pub loader: Option<Loader>
 }
 
-pub struct DeleteInstance {
-    pub uuid: Uuid,
-}
-
 pub struct Instance {
-    pub uuid: Uuid,
-    pub icon: String,
-    pub dir_name: String,
-    pub display_name: String,
-    pub version: String,
-    pub description: String,
+    pub id: InstanceId,
+    pub icon: IconUrl,
+    pub dir_name: DirectoryName,
+    pub display_name: DisplayName,
+    pub version: Version,
+    pub description: Description,
     pub loader: Loader
 }

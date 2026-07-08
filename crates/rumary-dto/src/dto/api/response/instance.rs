@@ -8,7 +8,7 @@ pub struct InstancesResponse {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct GetInstanceResponse {
-    pub uuid: Uuid,
+    pub id: Uuid,
     pub icon: String,
     pub dir_name: String,
     pub display_name: String,

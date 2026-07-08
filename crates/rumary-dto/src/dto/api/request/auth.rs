@@ -6,10 +6,8 @@ use uuid::Uuid;
 pub enum RoleTypeRequest {
     User = 0,
     VipUser = 1,
-    Builder = 2,
-    Writer = 3,
-    Admin = 4,
-    Owner = 5
+    Worker = 2,
+    Owner = 3
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -41,6 +39,11 @@ pub struct LoginRequest {
 
 #[derive(Debug, Deserialize)]
 pub struct TotpLoginRequest {
-    pub user_uuid: Uuid,
+    pub user_id: Uuid,
     pub totp_code: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct DeleteMeRequest {
+    pub password: String,
 }

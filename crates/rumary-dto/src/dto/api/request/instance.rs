@@ -14,7 +14,6 @@ pub struct NewInstanceRequest {
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct UpdateInstanceRequest {
-    pub uuid: Uuid,
     pub icon: Option<String>,
     pub dir_name: Option<String>,
     pub display_name: Option<String>,
@@ -27,5 +26,5 @@ pub struct UpdateInstanceRequest {
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct GetInstanceRequest {
-    pub instance_uuid: Uuid,
+    pub instance_id: Uuid,
 }

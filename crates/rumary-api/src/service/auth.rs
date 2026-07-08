@@ -1,5 +1,5 @@
 use crate::error::{AppError, AppResult};
-use crate::repo::repository::{SessionRepository, TotpRepository, UserRepository};
+use crate::repo::repository::{SessionRepository, UserRepository};
 use crate::service::totp::TotpService;
 use crate::services::AuthProvider;
 use crate::state::AppState;
@@ -9,9 +9,12 @@ use bcrypt::{DEFAULT_COST, hash, verify};
 use chrono::{Duration, Utc};
 use http::header;
 use jsonwebtoken::{DecodingKey, EncodingKey, Header, Validation, decode, encode};
-use rumary_dto::domain::api::ws::WsTicketClaims;
-use rumary_dto::domain::api::{AccessLevel, LoginOutcome, User};
+use rumary_dto::domain::api::WsTicketClaims;
+use rumary_dto::domain::api::{AccessLevel, LoginOutcome, RoleType, User};
 use rumary_dto::domain::api::{NewUser, RefreshSessionUpdate};
+use rumary_dto::domain::auth::expiration_time::ExpirationTime;
+use rumary_dto::domain::user::{PasswordHash, UserId};
+use rumary_dto::domain::value_object::auth::tokens::{TokenHash, TokenId};
 use rumary_dto::dto::api::request::{
     ClaimsRequest, LoginRequest, RegisterRequest, TotpLoginRequest,
 };
@@ -25,7 +28,6 @@ use uuid::Uuid;
 pub struct AuthService {
     user_repo: Arc<dyn UserRepository<Error = AppError>>,
     session_repo: Arc<dyn SessionRepository<Error = AppError>>,
-    totp_repo: Arc<dyn TotpRepository<Error = AppError>>,
     jwt_secret: String,
     access_token_ttl_minutes: i64,
     refresh_token_ttl_days: i64,
@@ -36,7 +38,6 @@ impl AuthService {
     pub fn new(
         user_repo: Arc<dyn UserRepository<Error = AppError>>,
         session_repo: Arc<dyn SessionRepository<Error = AppError>>,
-        totp_repo: Arc<dyn TotpRepository<Error = AppError>>,
         jwt_secret: String,
         access_token_ttl_minutes: i64,
         refresh_token_ttl_days: i64,
@@ -46,38 +47,40 @@ impl AuthService {
             user_repo,
             jwt_secret,
             session_repo,
-            totp_repo,
             access_token_ttl_minutes,
             refresh_token_ttl_days,
             ws_ticket_ttl_seconds,
         }
     }
 
-    async fn issue_tokens(&self, user_uuid: Uuid) -> AppResult<SessionTokensResponse> {
+    async fn issue_tokens(&self, user_id: UserId) -> AppResult<SessionTokensResponse> {
         let refresh_token = format!("{}{}", Uuid::new_v4().simple(), Uuid::new_v4().simple());
-        let refresh_token_hash = hash(&refresh_token, DEFAULT_COST)
-            .map_err(|_| AppError::Crypto("failed to hash refresh token".to_string()))?;
-        let refresh_token_id = Uuid::new_v4();
-        let expires_at = Utc::now() + Duration::days(self.refresh_token_ttl_days);
+        let refresh_token_hash = TokenHash::new(
+            hash(&refresh_token, DEFAULT_COST)
+                .map_err(|_| AppError::Crypto("failed to hash refresh token".to_string()))?,
+        );
+        let refresh_token_id = TokenId(Uuid::new_v4());
+        let expires_at =
+            ExpirationTime::new(Utc::now() + Duration::days(self.refresh_token_ttl_days))?;
 
         self.session_repo
             .save_refresh_session(
-                user_uuid,
+                user_id,
                 RefreshSessionUpdate {
-                    token_id: refresh_token_id,
+                    token_id: refresh_token_id.clone(),
                     refresh_token_hash,
                     expires_at,
                 },
             )
             .await?;
 
-        let refreshed_user =
-            self.user_repo
-                .find_user(user_uuid)
-                .await?
-                .ok_or(AppError::NotFound(
-                    "user was not found while ws ticket".to_string(),
-                ))?;
+        let refreshed_user = self
+            .user_repo
+            .find_user(user_id)
+            .await?
+            .ok_or(AppError::NotFound(
+                "user was not found while ws ticket".to_string(),
+            ))?;
 
         Ok(SessionTokensResponse {
             access_token: self.encode_access_token(&refreshed_user)?,
@@ -91,7 +94,7 @@ impl AuthService {
         let exp = now + Duration::minutes(self.access_token_ttl_minutes);
         let level = user.access_level.into();
         let claims = ClaimsResponse {
-            sub: user.uuid.to_string(),
+            sub: user.id.to_string(),
             level,
             exp: exp.timestamp() as usize,
             iat: now.timestamp() as usize,
@@ -111,22 +114,24 @@ impl AuthProvider for AuthService {
     type Error = AppError;
 
     async fn register(&self, payload: RegisterRequest) -> AppResult<SessionTokensResponse> {
-        let password_hash = hash(payload.password, DEFAULT_COST)
-            .map_err(|_| AppError::Crypto("failed to hash password".to_string()))?;
-
+        let password_hash = PasswordHash::new(payload.password)?;
         let user = self
             .user_repo
             .create_user(NewUser {
-                nickname: payload.nickname,
-                login: payload.login,
+                nickname: payload.nickname.try_into()?,
+                login: payload.login.try_into()?,
                 password_hash,
             })
             .await?;
 
-        self.issue_tokens(user.uuid).await
+        self.issue_tokens(user.id).await
     }
 
-    async fn login(&self, payload: LoginRequest) -> AppResult<LoginOutcome> {
+    async fn login(
+        &self,
+        payload: LoginRequest,
+        totp_service: &TotpService,
+    ) -> AppResult<LoginOutcome> {
         let user = self
             .user_repo
             .find_user_by_login(&payload.login)
@@ -135,21 +140,24 @@ impl AuthProvider for AuthService {
                 "user was not found while logging".to_string(),
             ))?;
 
-        let is_valid = verify(payload.password, &user.password_hash)
-            .map_err(|_| AppError::Crypto("failed to verify password".to_string()))?;
-        if !is_valid {
+        let is_valid = user.password_hash.verify(&payload.password);
+
+        if let Ok(is_valid) = is_valid
+            && is_valid
+        {
+        } else {
             return Err(AppError::Unauthorized("invalid credentials".to_string()));
         }
 
-        let res = self.totp_repo.find_totp_user(user.uuid).await?;
+        let res = totp_service.is_enabled(user.id).await?;
 
-        if res.is_some() {
+        if res {
             return Ok(LoginOutcome::TotpRequired(TotpRequiredResponse {
-                user_uuid: user.uuid,
+                user_id: user.id.into(), // Можно ли раскрыть uuid пользователя? Или сделать типа PubUserId?
             }));
         }
 
-        self.issue_tokens(user.uuid).await.map(LoginOutcome::Tokens)
+        self.issue_tokens(user.id).await.map(LoginOutcome::Tokens)
     }
 
     async fn verify_totp(
@@ -157,16 +165,20 @@ impl AuthProvider for AuthService {
         payload: TotpLoginRequest,
         totp_service: &TotpService,
     ) -> AppResult<SessionTokensResponse> {
-        let user = self
-            .totp_repo
-            .find_totp_user(payload.user_uuid)
-            .await?
-            .ok_or(AppError::NotFound(
-                "totp user was not found while logging".to_string(),
-            ))?;
+        let user_id = UserId(payload.user_id);
 
-        totp_service.verify_user_code(&user, &payload.totp_code)?;
-        self.issue_tokens(user.uuid).await
+        if !totp_service.is_enabled(user_id).await?
+            || !totp_service
+                .verify_user_code(user_id, &payload.totp_code)
+                .await?
+        {
+            return Err(AppError::NotFound(format!(
+                "totp user with id {} not found",
+                user_id
+            )));
+        }
+
+        self.issue_tokens(user_id).await
     }
 
     async fn refresh(
@@ -183,8 +195,9 @@ impl AuthProvider for AuthService {
             ))?;
         let expires_at = user.expires_at;
 
+        let user_id = user.id.into();
         if Utc::now() > expires_at {
-            self.session_repo.clear_refresh_session(user.uuid).await?;
+            self.session_repo.clear_refresh_session(user_id).await?;
             return Err(AppError::Unauthorized(
                 "refresh session expired".to_string(),
             ));
@@ -197,12 +210,12 @@ impl AuthProvider for AuthService {
             return Err(AppError::Unauthorized("invalid refresh token".to_string()));
         }
 
-        self.issue_tokens(user.uuid).await
+        self.issue_tokens(user_id).await
     }
 
     async fn logout(&self, auth_user: &AuthenticatedUser) -> AppResult<()> {
         self.session_repo
-            .clear_refresh_session(auth_user.uuid)
+            .clear_refresh_session(auth_user.id)
             .await?;
         Ok(())
     }
@@ -222,18 +235,19 @@ impl AuthProvider for AuthService {
             ));
         }
 
-        let user_uuid = Uuid::parse_str(&claims.sub)
-            .map_err(|_| AppError::Unauthorized("invalid websocket ticket".to_string()))?;
+        let user_id = Uuid::parse_str(&claims.sub)
+            .map_err(|_| AppError::Unauthorized("invalid websocket ticket".to_string()))?
+            .into();
         let user = self
             .user_repo
-            .find_user(user_uuid)
+            .find_user(user_id)
             .await?
             .ok_or(AppError::NotFound(
                 "user was not found in ws ticket".to_string(),
             ))?;
 
         Ok(AuthenticatedUser {
-            uuid: user.uuid,
+            id: user.id,
             access_level: claims.level,
         })
     }
@@ -241,7 +255,7 @@ impl AuthProvider for AuthService {
     async fn issue_ws_ticket(&self, auth_user: &AuthenticatedUser) -> AppResult<WsTicketResponse> {
         let user = self
             .user_repo
-            .find_user(auth_user.uuid)
+            .find_user(auth_user.id)
             .await?
             .ok_or(AppError::NotFound(
                 "user was not found while ws ticket".to_string(),
@@ -249,7 +263,7 @@ impl AuthProvider for AuthService {
         let now = Utc::now();
         let exp = now + Duration::seconds(self.ws_ticket_ttl_seconds);
         let claims = WsTicketClaims {
-            sub: user.uuid.to_string(),
+            sub: user.id.to_string(),
             level: user.access_level,
             purpose: "ws".to_string(),
             exp: exp.timestamp() as usize,
@@ -276,7 +290,8 @@ impl AuthProvider for AuthService {
         .claims;
 
         let user_uuid = Uuid::parse_str(&claims.sub)
-            .map_err(|_| AppError::Unauthorized("invalid access token".to_string()))?;
+            .map_err(|_| AppError::Unauthorized("invalid access token".to_string()))?
+            .into();
         let user = self
             .user_repo
             .find_user(user_uuid)
@@ -286,7 +301,7 @@ impl AuthProvider for AuthService {
             ))?;
 
         Ok(AuthenticatedUser {
-            uuid: user.uuid,
+            id: user.id,
             access_level: claims.level.into(),
         })
     }
@@ -318,20 +333,100 @@ where
     }
 }
 
+impl<S> FromRequestParts<S> for MaybeWorkerUser
+where
+    S: Send + Sync,
+    Arc<AppState>: FromRef<S>,
+{
+    type Rejection = AppError;
+
+    fn from_request_parts(
+        parts: &mut http::request::Parts,
+        state: &S,
+    ) -> impl Future<Output = Result<Self, Self::Rejection>> + Send {
+        let has_header = parts.headers.contains_key(header::AUTHORIZATION);
+        async move {
+            if !has_header {
+                return Ok(Self(None));
+            }
+
+            let future = AuthenticatedUser::from_request_parts(parts, state);
+            let user = future.await?;
+            match user.access_level.role_type {
+                RoleType::Worker | RoleType::Owner | RoleType::VipUser | RoleType::User => {
+                    Ok(Self(Some(user)))
+                }
+            }
+        }
+    }
+}
+
+impl<S> FromRequestParts<S> for AdminUser
+where
+    S: Send + Sync,
+    Arc<AppState>: FromRef<S>,
+{
+    type Rejection = AppError;
+
+    fn from_request_parts(
+        parts: &mut http::request::Parts,
+        state: &S,
+    ) -> impl Future<Output = Result<Self, Self::Rejection>> + Send {
+        let future = AuthenticatedUser::from_request_parts(parts, state);
+        async move {
+            let user = future.await?;
+            let role = match user.access_level.role_type {
+                RoleType::Worker | RoleType::Owner => {
+                    Self(user.access_level.role_type, user.access_level.level)
+                }
+                RoleType::User | RoleType::VipUser => {
+                    return Err(AppError::Forbidden("admin access required".to_string()));
+                }
+            };
+
+            Ok(role)
+        }
+    }
+}
+impl<S> FromRequestParts<S> for OwnerUser
+where
+    S: Send + Sync,
+    Arc<AppState>: FromRef<S>,
+{
+    type Rejection = AppError;
+
+    fn from_request_parts(
+        parts: &mut http::request::Parts,
+        state: &S,
+    ) -> impl Future<Output = Result<Self, Self::Rejection>> + Send {
+        let future = AuthenticatedUser::from_request_parts(parts, state);
+        async move {
+            let user = future.await?;
+            let role = match user.access_level.role_type {
+                RoleType::Owner => Self,
+                RoleType::Worker | RoleType::User | RoleType::VipUser => {
+                    return Err(AppError::Forbidden("admin access required".to_string()));
+                }
+            };
+
+            Ok(role)
+        }
+    }
+}
+
+/// Any user
 #[derive(Debug, Clone)]
 pub struct AuthenticatedUser {
-    pub uuid: Uuid,
+    pub id: UserId,
     pub access_level: AccessLevel,
 }
 
 #[derive(Debug, Clone)]
 pub struct VipUser;
+
 #[derive(Debug, Clone)]
-pub struct BuilderUser;
-#[derive(Debug, Clone)]
-pub struct WriterUser;
-#[derive(Debug, Clone)]
-pub struct AdminUser;
+pub struct AdminUser(pub RoleType, pub u16);
+
 #[derive(Debug, Clone)]
 pub struct OwnerUser;
 

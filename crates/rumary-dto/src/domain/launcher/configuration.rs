@@ -5,11 +5,11 @@ use crate::domain::download_url::DownloadUrl;
 
 #[derive(Debug)]
 pub struct Configuration {
-    id: Uuid,
-    name: String,
-    icon: DownloadUrl,
-    hard_check: CheckDirs,
-    soft_check: CheckDirs,
+    pub uuid: Uuid,
+    pub name: String,
+    pub icon: DownloadUrl,
+    pub hard_check: CheckDirs,
+    pub soft_check: CheckDirs,
 }
 
 impl Configuration {
@@ -21,7 +21,7 @@ impl Configuration {
         soft_check: CheckDirs,
     ) -> Self {
         Self {
-            id,
+            uuid: id,
             name,
             icon,
             hard_check,

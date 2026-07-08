@@ -19,35 +19,24 @@ impl From<AccessLevel> for AccessLevelResponse {
         }
     }
 }
-
-macro_rules! impl_from_role {
-    ($target:ident) => {
-        impl From<RoleType> for $target {
-            fn from(request: RoleType) -> Self {
-                match request {
-                    RoleType::User => Self::User,
-                    RoleType::VipUser => Self::VipUser,
-                    RoleType::Builder => Self::Builder,
-                    RoleType::Writer => Self::Writer,
-                    RoleType::Admin => Self::Admin,
-                    RoleType::Owner => Self::Owner,
-                }
-            }
-        }
-    };
-}
-
-impl_from_role!(RoleTypeResponse);
-
 impl From<RoleTypeRequest> for RoleType {
     fn from(request: RoleTypeRequest) -> Self {
         match request {
             RoleTypeRequest::User => Self::User,
             RoleTypeRequest::VipUser => Self::VipUser,
-            RoleTypeRequest::Builder => Self::Builder,
-            RoleTypeRequest::Writer => Self::Writer,
-            RoleTypeRequest::Admin => Self::Admin,
+            RoleTypeRequest::Worker => Self::Worker,
             RoleTypeRequest::Owner => Self::Owner,
+        }
+    }
+}
+
+impl From<RoleType> for RoleTypeResponse {
+    fn from(request: RoleType) -> Self {
+        match request {
+            RoleType::User => Self::User,
+            RoleType::VipUser => Self::VipUser,
+            RoleType::Worker => Self::Worker,
+            RoleType::Owner => Self::Owner,
         }
     }
 }
