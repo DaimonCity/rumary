@@ -58,7 +58,7 @@ impl TryFrom<String> for Login {
             return Err(Self::Error::Missing);
         }
 
-        if MIN_LEN_LOGIN > value.len() && value.len() > MAX_LEN_LOGIN {
+        if MIN_LEN_LOGIN > value.len() || value.len() > MAX_LEN_LOGIN {
             return Err(Self::Error::InvalidLength);
         }
         if value
