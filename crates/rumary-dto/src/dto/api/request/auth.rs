@@ -7,7 +7,7 @@ pub enum RoleTypeRequest {
     User = 0,
     VipUser = 1,
     Worker = 2,
-    Owner = 3
+    Owner = 3,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -27,6 +27,14 @@ pub struct RegisterRequest {
 pub struct ClaimsRequest {
     pub sub: String,
     pub level: AccessLevelRequest,
+    pub exp: usize,
+    pub iat: usize,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ClaimsV2Request {
+    pub sub: String,
+    pub level: Vec<usize>,
     pub exp: usize,
     pub iat: usize,
 }

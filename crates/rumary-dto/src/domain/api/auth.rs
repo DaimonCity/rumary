@@ -3,7 +3,6 @@ use crate::domain::value_object::auth::tokens::{TokenHash, TokenId};
 use crate::dto::api::response::{SessionTokensResponse, TotpRequiredResponse};
 use serde::{Deserialize, Serialize};
 
-
 pub enum LoginOutcome {
     Tokens(SessionTokensResponse),
     TotpRequired(TotpRequiredResponse),

@@ -77,7 +77,7 @@ impl TryFrom<String> for Description {
 
     fn try_from(value: String) -> Result<Self, Self::Error> {
         if value.is_empty() || value.len() > 500 {
-            return Err(Self::Error::InvalidLength)
+            return Err(Self::Error::InvalidLength);
         }
 
         Ok(Self(value))

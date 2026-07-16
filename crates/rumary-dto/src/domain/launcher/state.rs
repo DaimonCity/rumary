@@ -3,4 +3,4 @@ pub enum OsType {
     Windows,
     Linux,
     MacOs,
-} 
+}

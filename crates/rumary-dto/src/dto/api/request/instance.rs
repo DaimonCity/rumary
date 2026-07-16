@@ -13,7 +13,7 @@ pub struct NewInstanceRequest {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct UpdateInstanceRequest {
+pub struct UpdateInstanceResponse {
     pub icon: Option<String>,
     pub dir_name: Option<String>,
     pub display_name: Option<String>,
@@ -22,7 +22,6 @@ pub struct UpdateInstanceRequest {
     pub loader: Option<String>,
     pub loader_version: Option<String>,
 }
-
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct GetInstanceRequest {

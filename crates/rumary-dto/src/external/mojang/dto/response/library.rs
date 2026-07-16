@@ -1,7 +1,7 @@
-use std::collections::HashMap;
-use serde::{Deserialize, Serialize};
 use crate::external::mojang::dto::response::download::DownloadInfo;
 use crate::external::mojang::dto::response::rule::Rule;
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Library {

@@ -18,7 +18,6 @@ impl DownloadUrl {
     }
 }
 
-
 impl TryFrom<String> for DownloadUrl {
     type Error = url::ParseError;
 

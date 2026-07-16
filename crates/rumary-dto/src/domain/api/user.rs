@@ -1,7 +1,8 @@
-use crate::domain::api::AccessLevel;
+use crate::domain::api::{AccessLevel, RoleId};
+use crate::domain::auth::tokens::TokenHash;
+use crate::domain::user::{Login, Nickname, PasswordHash, UserId};
 use chrono::{DateTime, Utc};
 use uuid::Uuid;
-use crate::domain::user::{Login, Nickname, PasswordHash, UserId};
 
 #[derive(Debug, Clone)]
 pub struct User {
@@ -10,13 +11,14 @@ pub struct User {
     pub nickname: Nickname,
     pub password_hash: PasswordHash,
     pub access_level: AccessLevel,
+    pub role: RoleId,
     pub ban: Ban,
 }
 
 pub struct UserSession {
     pub id: UserId,
     pub token_id: Uuid,
-    pub refresh_token_hash: String,
+    pub refresh_token_hash: TokenHash,
     pub expires_at: DateTime<Utc>,
 }
 

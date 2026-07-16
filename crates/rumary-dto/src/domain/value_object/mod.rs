@@ -1,12 +1,12 @@
 pub mod auth;
+pub mod configuration;
 pub mod download_url;
+pub mod error;
+pub mod file;
 pub mod file_path;
 pub mod instance;
-pub mod roles;
 pub mod name;
-pub mod configuration;
+pub mod roles;
 pub mod url;
-pub mod version;
-pub mod error;
 pub mod user;
-
+pub mod version;

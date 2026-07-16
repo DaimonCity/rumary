@@ -26,5 +26,5 @@ impl From<IconUrl> for String {
 
 #[derive(Debug)]
 pub enum IconUrlError {
-    InvalidUrl
+    InvalidUrl,
 }

@@ -1,11 +1,7 @@
 mod auth;
-mod instance;
 mod configuration;
+mod instance;
 mod settings;
+mod role;
 
-pub use {
-    auth::*,
-    configuration::*,
-    instance::*,
-    settings::*,
-};
+pub use {auth::*, configuration::*, instance::*, settings::*, role::*};

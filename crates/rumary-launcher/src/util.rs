@@ -55,17 +55,11 @@ pub fn objects_path<P: AsRef<Path>>(root_path: P, version: &str) -> PathBuf {
 }
 
 pub fn assets_path<P: AsRef<Path>>(root_path: P, version: &str) -> PathBuf {
-    root_path
-        .as_ref()
-        .join("assets")
-        .join(version)
+    root_path.as_ref().join("assets").join(version)
 }
 
 pub fn game_path<P: AsRef<Path>>(root_path: P, version: &str) -> PathBuf {
-    root_path
-        .as_ref()
-        .join("profiles")
-        .join(version)
+    root_path.as_ref().join("profiles").join(version)
 }
 
 pub async fn verify_path<P: AsRef<Path>>(path: P) -> UtilResult<()> {
@@ -75,7 +69,7 @@ pub async fn verify_path<P: AsRef<Path>>(path: P) -> UtilResult<()> {
     {
         eprintln!("{e}");
     };
-    
+
     Ok(())
 }
 

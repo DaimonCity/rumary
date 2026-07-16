@@ -5,4 +5,3 @@ pub struct JavaVersion {
     #[serde(rename = "majorVersion")]
     pub major_version: i32,
 }
-

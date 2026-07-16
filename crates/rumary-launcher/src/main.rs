@@ -1,10 +1,10 @@
 mod app;
 mod config;
-mod i18n;
-mod ui;
 pub mod download;
-pub mod util;
+mod i18n;
 pub mod result;
+mod ui;
+pub mod util;
 pub mod validation;
 
 use app::LauncherApp;

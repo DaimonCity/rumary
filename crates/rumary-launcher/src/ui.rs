@@ -1,8 +1,10 @@
 use crate::app::AppState;
 use crate::util;
 use crate::validation::ValidationService;
+use rumary_dto::domain::launcher::state::OsType;
 use rumary_dto::domain::launcher::{ChosenVersion, MinecraftLaunchArgs};
-use rumary_dto::dto::api::response::{GetInstanceResponse, GetConfigurationResponse};
+use rumary_dto::dto::api::response::{GetConfigurationResponse, GetInstanceResponse};
+use rumary_dto::mojang::dto::response::VersionManifest;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::env;
@@ -10,8 +12,6 @@ use std::process::Command;
 use std::rc::Rc;
 use std::sync::Arc;
 use uuid::Uuid;
-use rumary_dto::domain::launcher::state::OsType;
-use rumary_dto::mojang::dto::response::VersionManifest;
 
 slint::include_modules!();
 

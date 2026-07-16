@@ -1,0 +1,67 @@
+{
+  "auth": {
+    "method": {
+      "login": true,
+      "verify_totp": true
+    },
+    "session": {
+      "refresh": true
+    }
+  },
+  "settings": {
+    "instance_path": {
+      "set": false,
+      "remove": false
+    }
+  },
+  "configuration": {
+    "method": {
+      "create": true,
+      "list": true
+    },
+    "instance_id": {
+      "list": true
+    },
+    "config_id": {
+      "update": true,
+      "get": true,
+      "delete": true,
+      "download": true
+    }
+  },
+  "instance": {
+    "method": {
+      "create": true,
+      "list": true
+    },
+    "instance_id": {
+      "update": true,
+      "get": true,
+      "delete": true
+    }
+  },
+  "profile": {
+    "method": {
+      "create": true,
+      "list": true
+    },
+    "user_id": {
+      "update": true,
+      "get": true,
+      "delete": true
+    }
+  },
+  "role": {
+    "method": {
+      "create": true,
+      "list": true
+    },
+    "role_id": {
+      "add": true,
+      "remove": true,
+      "update": true,
+      "get": true,
+      "delete": true
+    }
+  }
+}

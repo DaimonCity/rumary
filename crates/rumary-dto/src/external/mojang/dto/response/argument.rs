@@ -1,5 +1,5 @@
-use serde::{Deserialize, Serialize};
 use crate::mojang::dto::response::Rule;
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Arguments {

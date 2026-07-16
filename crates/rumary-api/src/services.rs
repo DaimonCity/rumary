@@ -1,12 +1,18 @@
+use crate::error::AppResult;
 use crate::service::auth::AuthenticatedUser;
+use crate::service::file::FileHandle;
 use crate::service::totp::TotpService;
 use crate::service::userprofile::ProfileResponse;
 use async_trait::async_trait;
 use rumary_dto::domain::api::LoginOutcome;
-use rumary_dto::dto::api::request::{DeleteMeRequest, LoginRequest, RegisterRequest, TotpLoginRequest};
-use rumary_dto::dto::api::response::{SessionTokensResponse, WsTicketResponse};
-use uuid::Uuid;
+use rumary_dto::domain::auth::tokens::TokenId;
+use rumary_dto::domain::configuration::ConfigurationId;
 use rumary_dto::domain::user::UserId;
+use rumary_dto::dto::api::request::{
+    DeleteMeRequest, LoginRequest, RegisterRequest, TotpLoginRequest,
+};
+use rumary_dto::dto::api::response::{SessionTokensResponse, WsTicketResponse};
+use std::path::Path;
 
 #[async_trait]
 pub trait AuthProvider: Send + Sync {
@@ -16,7 +22,11 @@ pub trait AuthProvider: Send + Sync {
         payload: RegisterRequest,
     ) -> Result<SessionTokensResponse, Self::Error>; // +
 
-    async fn login(&self, payload: LoginRequest, totp_service: &TotpService) -> Result<LoginOutcome, Self::Error>; // +
+    async fn login(
+        &self,
+        payload: LoginRequest,
+        totp_service: &TotpService,
+    ) -> Result<LoginOutcome, Self::Error>; // +
     async fn verify_totp(
         &self,
         payload: TotpLoginRequest,
@@ -26,16 +36,13 @@ pub trait AuthProvider: Send + Sync {
     async fn refresh(
         &self,
         refresh_token: &str,
-        refresh_token_id: Uuid,
+        refresh_token_id: TokenId,
     ) -> Result<SessionTokensResponse, Self::Error>; // +
 
-    async fn logout(&self, auth_user: &AuthenticatedUser) -> Result<(), Self::Error>; // +
+    async fn logout(&self, user_id: UserId) -> Result<(), Self::Error>; // +
 
     async fn authenticate_ws_ticket(&self, ticket: &str) -> Result<AuthenticatedUser, Self::Error>; // +
-    async fn issue_ws_ticket(
-        &self,
-        auth_user: &AuthenticatedUser,
-    ) -> Result<WsTicketResponse, Self::Error>; // +
+    async fn issue_ws_ticket(&self, user_id: UserId) -> Result<WsTicketResponse, Self::Error>; // +
     async fn authenticate_access_token(
         &self,
         token: &str,
@@ -48,4 +55,16 @@ pub trait UserProfileProvider: Send + Sync {
     async fn me(&self, user_id: UserId) -> Result<ProfileResponse, Self::Error>;
     async fn delete_me(&self, user_id: UserId, payload: DeleteMeRequest)
     -> Result<(), Self::Error>;
+}
+
+#[async_trait]
+pub trait FileResolver: Send + Sync {
+    // Метод возвращает не просто PathBuf, а некий абстрактный FileHandle
+    // который сервис может использовать для открытия потока.
+    async fn resolve_file(
+        &self,
+        config_uuid: ConfigurationId,
+        requested_path: &Path,
+        // access_level: u16,
+    ) -> AppResult<FileHandle>;
 }

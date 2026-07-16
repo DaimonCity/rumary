@@ -10,7 +10,7 @@ pub struct NewInstance {
     pub display_name: DisplayName,
     pub version: Version,
     pub description: Description,
-    pub loader: Loader
+    pub loader: Loader,
 }
 
 pub struct UpdateInstance {
@@ -19,7 +19,7 @@ pub struct UpdateInstance {
     pub display_name: Option<DisplayName>,
     pub version: Option<Version>,
     pub description: Option<Description>,
-    pub loader: Option<Loader>
+    pub loader: Option<Loader>,
 }
 
 pub struct Instance {
@@ -29,5 +29,5 @@ pub struct Instance {
     pub display_name: DisplayName,
     pub version: Version,
     pub description: Description,
-    pub loader: Loader
+    pub loader: Loader,
 }

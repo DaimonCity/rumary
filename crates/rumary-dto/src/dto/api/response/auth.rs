@@ -1,6 +1,5 @@
-use serde::{ Serialize};
+use serde::Serialize;
 use uuid::Uuid;
-use crate::domain::value_object::auth::tokens::TokenId;
 
 #[derive(Debug, Serialize)]
 pub struct TokenResponse {
@@ -23,7 +22,7 @@ pub struct TotpRequiredResponse {
 pub struct SessionTokensResponse {
     pub access_token: String,
     pub refresh_token: String,
-    pub refresh_token_id: TokenId,
+    pub refresh_token_id: String,
 }
 
 #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
@@ -32,7 +31,7 @@ pub enum RoleTypeResponse {
     User = 0,
     VipUser = 1,
     Worker = 2,
-    Owner = 3
+    Owner = 3,
 }
 
 #[derive(Clone, Debug, Serialize, PartialEq, Eq)]

@@ -1,12 +1,7 @@
-mod model;
+mod check;
 mod configuration;
 mod instance;
-mod check;
+mod model;
 pub mod state;
 
-pub use {
-    model::*,
-    configuration::*,
-    instance::*,
-    check::*,
-};
+pub use {check::*, configuration::*, instance::*, model::*};

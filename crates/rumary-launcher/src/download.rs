@@ -1,15 +1,15 @@
 use crate::app::AppState;
-use rumary_dto::domain::launcher::ChosenVersion;
 use crate::result::UtilResult;
 use crate::util;
 use reqwest::IntoUrl;
 use reqwest_middleware::ClientWithMiddleware;
+use rumary_dto::domain::launcher::ChosenVersion;
+use rumary_dto::mojang::dto::response::{AssetJson, Library, VersionJson, VersionManifest};
 use std::error::Error;
 use std::path::Path;
 use std::sync::Arc;
 use tokio::fs;
 use tokio::task::JoinSet;
-use rumary_dto::mojang::dto::response::{VersionManifest, VersionJson, AssetJson, Library};
 
 pub const MANIFEST_URL: &str = "https://launchermeta.mojang.com/mc/game/version_manifest.json";
 const RESOURCES_URL: &str = "https://resources.download.minecraft.net";
@@ -181,7 +181,7 @@ pub async fn download_assets_json<P: AsRef<Path>>(
     let mut set = JoinSet::new();
     let url = version_json.asset_index.url.clone();
     let client = client.clone();
-    let copy  = file_path.as_ref().to_path_buf();
+    let copy = file_path.as_ref().to_path_buf();
     let file_path = file_path.as_ref().to_path_buf();
 
     set.spawn(async move {

@@ -1,14 +1,19 @@
 use crate::config::LauncherConfig;
 use crate::download::MANIFEST_URL;
 use crate::i18n::Translator;
-use rumary_dto::domain::launcher::ChosenVersion;
 use crate::result::AppResult;
 use crate::ui::AppWindow;
 use crate::validation::ValidationService;
 use crate::{ui, util};
 use reqwest::IntoUrl;
 use reqwest_middleware::{ClientBuilder, ClientWithMiddleware};
-use reqwest_retry::{policies::ExponentialBackoff, RetryTransientMiddleware};
+use reqwest_retry::{RetryTransientMiddleware, policies::ExponentialBackoff};
+use rumary_dto::domain::launcher::ChosenVersion;
+use rumary_dto::domain::launcher::MinecraftLaunchArgs;
+use rumary_dto::domain::launcher::state::OsType;
+use rumary_dto::dto::api::response::GetConfigurationResponse;
+use rumary_dto::dto::api::response::GetInstanceResponse;
+use rumary_dto::mojang::dto::response::{Version, VersionJson, VersionManifest};
 use slint::ComponentHandle;
 use std::cell::RefCell;
 use std::env;
@@ -17,11 +22,6 @@ use std::rc::Rc;
 use std::sync::mpsc;
 use std::time::Duration;
 use tokio::runtime::Runtime;
-use rumary_dto::domain::launcher::MinecraftLaunchArgs;
-use rumary_dto::domain::launcher::state::OsType;
-use rumary_dto::dto::api::response::GetInstanceResponse;
-use rumary_dto::dto::api::response::GetConfigurationResponse;
-use rumary_dto::mojang::dto::response::{Version, VersionJson, VersionManifest};
 
 // channels for json
 // pub struct JsonChannels
@@ -35,8 +35,14 @@ pub struct AppChannels {
         mpsc::Sender<Vec<GetInstanceResponse>>,
         mpsc::Receiver<Vec<GetInstanceResponse>>,
     ),
-    pub profiles: (mpsc::Sender<Vec<GetConfigurationResponse>>, mpsc::Receiver<Vec<GetConfigurationResponse>>),
-    pub launch: (mpsc::Sender<MinecraftLaunchArgs>, mpsc::Receiver<MinecraftLaunchArgs>),
+    pub profiles: (
+        mpsc::Sender<Vec<GetConfigurationResponse>>,
+        mpsc::Receiver<Vec<GetConfigurationResponse>>,
+    ),
+    pub launch: (
+        mpsc::Sender<MinecraftLaunchArgs>,
+        mpsc::Receiver<MinecraftLaunchArgs>,
+    ),
     pub minecraft: (mpsc::Sender<VersionJson>, mpsc::Receiver<VersionJson>),
     pub validation_service: (
         mpsc::Sender<ValidationService>,
@@ -70,7 +76,6 @@ impl AppState {
             .with(RetryTransientMiddleware::new_with_policy(retry_policy))
             .build();
         let current_os = OsType::try_from(env::consts::OS)?;
-        
 
         Ok(Self {
             os: current_os,

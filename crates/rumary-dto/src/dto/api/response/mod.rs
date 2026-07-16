@@ -1,13 +1,8 @@
 mod auth;
-mod ws;
-mod totp;
-pub mod instance;
 pub mod configuration;
+pub mod instance;
+mod totp;
+mod ws;
+pub mod role;
 
-pub use {
-    auth::*,
-    totp::*,
-    ws::*,
-    configuration::*,
-    instance::*,
-};
+pub use {auth::*, configuration::*, instance::*, totp::*, ws::*};

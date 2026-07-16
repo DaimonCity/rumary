@@ -1,4 +1,3 @@
-
 #[derive(Clone, Debug)]
 pub struct Version(semver::Version);
 
@@ -12,7 +11,9 @@ impl TryFrom<String> for Version {
     type Error = VersionError;
 
     fn try_from(value: String) -> Result<Self, Self::Error> {
-        Ok(Version(semver::Version::parse(&value).map_err(Self::Error::Parse)?))
+        Ok(Version(
+            semver::Version::parse(&value).map_err(Self::Error::Parse)?,
+        ))
     }
 }
 

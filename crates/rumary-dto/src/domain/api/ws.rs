@@ -1,10 +1,18 @@
-use serde::{Deserialize, Serialize};
 use crate::domain::api::AccessLevel;
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct WsTicketClaims {
     pub sub: String,
     pub level: AccessLevel,
+    pub purpose: String,
+    pub exp: usize,
+    pub iat: usize,
+}
+#[derive(Debug, Serialize, Deserialize)]
+pub struct WsTicketV2Claims {
+    pub sub: String,
+    pub level: Vec<usize>,
     pub purpose: String,
     pub exp: usize,
     pub iat: usize,

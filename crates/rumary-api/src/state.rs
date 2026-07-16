@@ -1,9 +1,11 @@
 use crate::error::AppError;
 use crate::service::file::FileService;
+use crate::service::roles::RoleService;
+use crate::service::settings::SettingsService;
 use crate::service::totp::TotpService;
 use crate::services::{AuthProvider, UserProfileProvider};
 use std::sync::Arc;
-use crate::service::settings::SettingsService;
+use tokio::sync::RwLock;
 
 #[derive(Clone)]
 pub struct AppState {
@@ -12,5 +14,6 @@ pub struct AppState {
     pub totp: Arc<TotpService>,
     pub file: Arc<FileService>,
     pub settings: Arc<SettingsService>,
+    pub role: Arc<RwLock<RoleService>>,
     pub secure_cookies: bool,
 }

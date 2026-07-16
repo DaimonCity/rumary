@@ -3,10 +3,10 @@ use crate::repo::repository::{TotpRepository, UserRepository};
 use crate::services::UserProfileProvider;
 use async_trait::async_trait;
 use bcrypt::verify;
+use rumary_dto::domain::user::UserId;
 use rumary_dto::dto::api::request::DeleteMeRequest;
 use serde::Serialize;
 use std::sync::Arc;
-use rumary_dto::domain::user::UserId;
 
 pub struct UserProfileService {
     user_repo: Arc<dyn UserRepository<Error = AppError>>,

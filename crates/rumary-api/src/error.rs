@@ -1,19 +1,21 @@
+use crate::service::right::Rights;
 use axum::{
     Json,
     http::StatusCode,
     response::{IntoResponse, Response},
 };
-use rumary_dto::domain::api::LoaderError;
+use rumary_dto::domain::api::{LoaderError, RoleError};
 use rumary_dto::domain::auth::errors::ExpirationTimeError;
 use rumary_dto::domain::error::ValueObjectError;
 use rumary_dto::domain::name::{DescriptionError, DirectoryNameError, DisplayNameError};
 use rumary_dto::domain::url::IconUrlError;
-use rumary_dto::domain::user::{LoginError, NicknameError, PasswordHashError};
+use rumary_dto::domain::user::{HashError, LoginError, NicknameError};
 use rumary_dto::domain::version::VersionError;
+use rumary_dto::err_from;
 use serde::Serialize;
 use sqlx::migrate::MigrateError;
 use thiserror::Error;
-use rumary_dto::err_from;
+use tokio::sync::mpsc::error::SendError;
 
 #[derive(Debug, Error)]
 pub enum AppError {
@@ -67,8 +69,14 @@ pub enum AppError {
     InvalidLogin(LoginError),
     #[error("invalid nickname")]
     InvalidNickname(NicknameError),
-    #[error("invalid password hash")]
-    InvalidPasswordHash(PasswordHashError),
+    #[error("invalid hash")]
+    InvalidHash(HashError),
+    #[error("role error")]
+    RoleError(RoleError),
+    #[error("json error: {0}")]
+    JsonError(serde_json::error::Error),
+    #[error("send rights error: {0}")]
+    SendRightsError(SendError<Rights>),
 }
 
 #[derive(Debug, Serialize)]
@@ -96,13 +104,16 @@ impl IntoResponse for AppError {
             Self::Database(_)
             | Self::Internal(_)
             | Self::Configuration(_)
+            | Self::RoleError(_)
             | Self::Crypto(_)
             | Self::Uuid(_)
+            | Self::JsonError(_)
             | Self::Fmt(_)
-            | Self::InvalidPasswordHash(_)
+            | Self::InvalidHash(_)
             | Self::Token(_)
             | Self::Io(_)
             | Self::Url(_)
+            | Self::SendRightsError(_)
             | Self::Http(_)
             | Self::Migration(_) => StatusCode::INTERNAL_SERVER_ERROR,
         };
@@ -125,13 +136,17 @@ err_from!(http::Error, AppError, Http);
 err_from!(ExpirationTimeError, AppError, TokenExpired);
 err_from!(NicknameError, AppError, InvalidNickname);
 err_from!(LoginError, AppError, InvalidLogin);
-err_from!(PasswordHashError, AppError, InvalidPasswordHash);
+err_from!(HashError, AppError, InvalidHash);
 err_from!(DisplayNameError, AppError, InvalidDisplayName);
 err_from!(DirectoryNameError, AppError, InvalidDirectoryName);
 err_from!(VersionError, AppError, InvalidVersion);
 err_from!(DescriptionError, AppError, InvalidDescription);
 err_from!(LoaderError, AppError, InvalidLoader);
 err_from!(IconUrlError, AppError, InvalidIconUrl);
+err_from!(RoleError, AppError, RoleError);
+err_from!(std::io::Error, AppError, Io);
+err_from!(serde_json::error::Error, AppError, JsonError);
+err_from!(SendError<Rights>, AppError, SendRightsError);
 
 impl From<ValueObjectError> for AppError {
     fn from(value: ValueObjectError) -> Self {
@@ -142,7 +157,7 @@ impl From<ValueObjectError> for AppError {
             ValueObjectError::IconUrl(e) => Self::InvalidIconUrl(e),
             ValueObjectError::Nickname(e) => Self::InvalidNickname(e),
             ValueObjectError::Login(e) => Self::InvalidLogin(e),
-            ValueObjectError::PasswordHash(e) => Self::InvalidPasswordHash(e),
+            ValueObjectError::PasswordHash(e) => Self::InvalidHash(e),
             ValueObjectError::Version(e) => Self::InvalidVersion(e),
             ValueObjectError::LoaderError(e) => Self::InvalidLoader(e),
         }

@@ -1,12 +1,10 @@
 pub mod domain;
 pub mod dto;
-pub mod service;
 mod external;
+pub mod service;
 
 #[cfg(feature = "mojang")]
-pub use {
-    external::mojang
-};
+pub use external::mojang;
 
 pub fn add(left: u64, right: u64) -> u64 {
     left + right

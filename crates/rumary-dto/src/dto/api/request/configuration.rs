@@ -3,7 +3,7 @@ use uuid::Uuid;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ConfigurationsRequest {
-    pub instance_id: Uuid
+    pub instance_id: Uuid,
 }
 
 #[derive(Debug, Serialize, Deserialize)]

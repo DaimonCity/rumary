@@ -1,16 +1,35 @@
+use crate::domain::user::HashError;
+use bcrypt::{DEFAULT_COST, hash, verify};
 use std::fmt::Display;
 use uuid::Uuid;
 
 #[derive(Clone, Debug)]
-pub struct TokenId(pub Uuid);
+pub struct TokenId(Uuid);
+
+impl TokenId {
+    pub fn generate() -> Self {
+        Self(Uuid::new_v4())
+    }
+}
+
+impl From<Uuid> for TokenId {
+    fn from(uuid: Uuid) -> Self {
+        Self(uuid)
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct TokenHash(String);
 
 impl TokenHash {
-    pub fn new(hash: String) -> Self {
-        Self(hash)
+    pub fn new(token: String) -> Result<Self, HashError> {
+        let hash = hash(token, DEFAULT_COST).map_err(HashError::HashingFailed)?;
+        Ok(Self(hash))
     }
-    pub fn expose(&self) -> &str { &self.0 }
+
+    pub fn verify(&self, token: &str) -> Result<bool, HashError> {
+        verify(&self.0, token).map_err(HashError::VerifyingFailed)
+    }
 }
 
 impl Display for TokenId {

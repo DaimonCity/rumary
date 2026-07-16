@@ -1,7 +1,7 @@
-use crate::domain::launcher::{CheckDirs};
+use crate::domain::download_url::DownloadUrl;
+use crate::domain::launcher::CheckDirs;
 use std::fmt::Debug;
 use uuid::Uuid;
-use crate::domain::download_url::DownloadUrl;
 
 #[derive(Debug)]
 pub struct Configuration {

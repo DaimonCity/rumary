@@ -1,11 +1,11 @@
-use std::error::Error;
-use serde::{Deserialize, Serialize};
 use crate::external::mojang::dto::response::argument::Arguments;
 use crate::external::mojang::dto::response::asset::AssetIndex;
 use crate::external::mojang::dto::response::download::Downloads;
 use crate::external::mojang::dto::response::library::Library;
 use crate::external::mojang::dto::response::logging::Logging;
 use crate::external::mojang::dto::response::other::JavaVersion;
+use serde::{Deserialize, Serialize};
+use std::error::Error;
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct VersionManifest {

@@ -5,7 +5,7 @@ use rumary_dto::domain::name::{Description, DirectoryName, DisplayName};
 use rumary_dto::domain::url::IconUrl;
 use rumary_dto::domain::version::Version;
 use rumary_dto::dto::api::request::{
-    GetInstanceRequest, NewInstanceRequest, UpdateInstanceRequest,
+    GetInstanceRequest, NewInstanceRequest, UpdateInstanceResponse,
 };
 use rumary_dto::dto::api::response::GetInstanceResponse;
 use std::sync::Arc;
@@ -34,7 +34,7 @@ impl InstanceService {
         self.instance_repo.create_instance(new_instance).await
     }
 
-    pub async fn update_instance(&self, request: UpdateInstanceRequest) -> AppResult<Instance> {
+    pub async fn update_instance(&self, request: UpdateInstanceResponse) -> AppResult<Instance> {
         let loader = if let Some(loader) = request.loader {
             let loader_version = request.loader_version.map(Version::try_from).transpose()?;
             Some(Loader::from_string(loader, loader_version)?)
@@ -66,18 +66,17 @@ impl InstanceService {
     pub async fn get_instance(
         &self,
         request: GetInstanceRequest,
-        access_level: u16,
     ) -> AppResult<GetInstanceResponse> {
         let instance = self
             .instance_repo
-            .get_instance(request.instance_id.into(), access_level)
+            .get_instance(request.instance_id.into())
             .await?;
         Ok(instance.into())
     }
 
     /// instance.<instance-uuid>.list
-    pub async fn list_instances(&self, access_level: u16) -> AppResult<Vec<GetInstanceResponse>> {
-        let instances = self.instance_repo.list_instances(access_level).await?;
+    pub async fn list_instances(&self) -> AppResult<Vec<GetInstanceResponse>> {
+        let instances = self.instance_repo.list_instances().await?;
         Ok(instances.into_iter().map(|i| i.into()).collect())
     }
 }

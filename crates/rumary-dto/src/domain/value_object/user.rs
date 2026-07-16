@@ -61,6 +61,7 @@ impl TryFrom<String> for Login {
         if MIN_LEN_LOGIN > value.len() || value.len() > MAX_LEN_LOGIN {
             return Err(Self::Error::InvalidLength);
         }
+
         if value
             .chars()
             .any(|c| !c.is_alphanumeric() && c != '_' && c != '-')
@@ -114,13 +115,13 @@ impl From<Nickname> for String {
 }
 
 impl PasswordHash {
-    pub fn new(password: String) -> Result<Self, PasswordHashError> {
-        let hash = hash(password, DEFAULT_COST).map_err(PasswordHashError::HashingFailed)?;
+    pub fn new(password: String) -> Result<Self, HashError> {
+        let hash = hash(password, DEFAULT_COST).map_err(HashError::HashingFailed)?;
         Ok(Self(hash))
     }
 
-    pub fn verify(&self, password: &str) -> Result<bool, PasswordHashError> {
-        verify(&self.0, password).map_err(PasswordHashError::VerifyingFailed)
+    pub fn verify(&self, password: &str) -> Result<bool, HashError> {
+        verify(&self.0, password).map_err(HashError::VerifyingFailed)
     }
 }
 
@@ -139,7 +140,7 @@ impl Deref for PasswordHash {
 }
 
 #[derive(Debug)]
-pub enum PasswordHashError {
+pub enum HashError {
     VerifyingFailed(bcrypt::BcryptError),
     HashingFailed(bcrypt::BcryptError),
 }

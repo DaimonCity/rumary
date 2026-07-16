@@ -1,10 +1,10 @@
 pub mod api;
-pub mod totp;
-mod instances;
-mod configurations;
 pub mod auth;
-pub mod settings;
-pub mod roles_archived;
-pub mod userprofile;
+mod configurations;
 pub mod file;
-pub mod role;
+mod instances;
+pub mod right;
+pub mod roles;
+pub mod settings;
+pub mod totp;
+pub mod userprofile;

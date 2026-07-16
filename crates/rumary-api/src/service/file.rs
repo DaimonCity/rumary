@@ -1,85 +1,61 @@
 use crate::error::{AppError, AppResult};
 use crate::repo::repository::{ConfigurationRepository, InstanceRepository, SettingsRepository};
+use crate::services::FileResolver;
+use async_trait::async_trait;
 use axum::{
     body::Body,
     http::{HeaderMap, Response},
 };
 use http::{StatusCode, header};
-use std::path::Path;
+use rumary_dto::domain::configuration::ConfigurationId;
+use rumary_dto::impl_new;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tokio::fs::File;
 use tokio_util::io::ReaderStream;
-use rumary_dto::domain::configuration::ConfigurationId;
 
 pub struct FileService {
-    configuration_repo: Arc<dyn ConfigurationRepository<Error = AppError>>,
-    instance_repo: Arc<dyn InstanceRepository<Error = AppError>>,
-    settings_repo: Arc<dyn SettingsRepository<Error = AppError>>,
+    resolver: Arc<dyn FileResolver>,
 }
 
 impl FileService {
-    pub fn new(
-        configuration_repo: Arc<dyn ConfigurationRepository<Error = AppError>>,
-        instance_repo: Arc<dyn InstanceRepository<Error = AppError>>,
-        settings_repo: Arc<dyn SettingsRepository<Error = AppError>>,
-    ) -> Self {
-        Self {
-            configuration_repo,
-            instance_repo,
-            settings_repo,
-        }
+    pub fn new(resolver: Arc<dyn FileResolver>) -> Self {
+        Self { resolver }
     }
 
     pub async fn stream_file(
         &self,
-        configuration_uuid: ConfigurationId,
+        config_id: ConfigurationId,
         filepath: &Path,
         headers: &HeaderMap,
-        access_level: u16,
+        // access_level: u16,
     ) -> AppResult<Response<Body>> {
-        // 1. Ищем, зарегистрирована ли такая папка (пространство имен)
-        // путь до папки instances, где все instance
-        // root_path -> /home/rumary/instances/
-        let root_path = self.settings_repo.get_instances_dir_path().await?;
-
-        // /home/rumary/instances/LeKRAFT 1.0
-        // /home/rumary/instances/LeKRAFT 2.0
-        // /home/rumary/instances/LeKRAFT Test
-        let configuration = self
-            .configuration_repo
-            .get_config(configuration_uuid, access_level)
+        let handle = self
+            .resolver
+            .resolve_file(config_id, filepath)
             .await?;
-        let instance = self
-            .instance_repo
-            .get_instance(configuration.instance_id, access_level)
-            .await?;
-        let instance_path = root_path.join(instance.dir_name);
 
-        // /home/rumary/instances/LeKRAFT 1.0/Potato
-        // /home/rumary/instances/LeKRAFT 1.0/Medium
-        // /home/rumary/instances/LeKRAFT 1.0/High
-        let configuration_path = instance_path.join(configuration.dir_name);
-        let file_path = configuration_path.join(filepath);
-
-        // 2. Проверяем метаданные файла
-        let metadata = tokio::fs::metadata(&file_path)
-            .await
-            .map_err(|_| AppError::NotFound("FileService: metadata is lost".to_string()))?;
-
-        // 3. Логика HTTP-кэширования (ETag) для файлов 10-100 МБ
-        // Безопасно получаем ETag, если ОС поддерживает время модификации файла
-        let etag = match metadata.modified() {
-            Ok(modified) => {
-                let duration = modified
-                    .duration_since(std::time::SystemTime::UNIX_EPOCH)
+        let (file, len, modified) = match handle {
+            FileHandle::LocalV1(path) => {
+                let meta = tokio::fs::metadata(&path)
+                    .await
+                    .map_err(|_| AppError::NotFound("File not found".into()))?;
+                let file = File::open(path)
+                    .await
                     .map_err(|e| AppError::Internal(e.to_string()))?;
-                Some(format!("W/\"{}-{}\"", duration.as_secs(), metadata.len()))
+                (file, meta.len(), meta.modified().ok())
             }
-            Err(_) => None, // Если ОС не поддерживает modified_time, отдаем файл без ETag
         };
 
-        // Проверяем ETag, если он успешно сгенерирован
-        if let Some(ref etag_str) = etag
+        // 2. Логика ETag (теперь используем `modified` и `len`)
+        let etag = modified.and_then(|m| {
+            m.duration_since(std::time::SystemTime::UNIX_EPOCH)
+                .ok()
+                .map(|d| format!("W/\"{}-{}\"", d.as_secs(), len))
+        });
+
+        // 3. Проверка If-None-Match
+        if let Some(etag_str) = &etag
             && let Some(if_none_match) = headers.get(header::IF_NONE_MATCH)
             && if_none_match == etag_str.as_str()
         {
@@ -88,31 +64,55 @@ impl FileService {
                 .body(Body::empty())?);
         }
 
-        // 4. Открываем и стримим файл чанками
-        let file = File::open(file_path).await.map_err(|e| match e.kind() {
-            std::io::ErrorKind::NotFound => {
-                AppError::NotFound("FileService: file not found".to_string())
-            }
-            _ => AppError::Internal(e.to_string()),
-        })?;
-
-        let stream = ReaderStream::new(file);
-        let body = Body::from_stream(stream);
-
-        // 5. Формируем ответ
-        let mut response_builder = Response::builder()
+        // 4. Формирование ответа с заголовками
+        let mut builder = Response::builder()
             .status(StatusCode::OK)
             .header(header::CONTENT_TYPE, "application/octet-stream")
-            .header(header::CONTENT_LENGTH, metadata.len())
-            .header(header::CACHE_CONTROL, "public, max-age=86400"); // Кэш на 1 день
+            .header(header::CONTENT_LENGTH, len)
+            .header(header::CACHE_CONTROL, "public, max-age=86400");
 
-        // Добавляем ETag в заголовки только если он есть
         if let Some(etag_str) = etag {
-            response_builder = response_builder.header(header::ETAG, etag_str);
+            builder = builder.header(header::ETAG, etag_str);
         }
 
-        let response = response_builder.body(body)?;
+        Ok(builder.body(Body::from_stream(ReaderStream::new(file)))?)
+    }
+}
 
-        Ok(response)
+pub enum FileHandle {
+    LocalV1(PathBuf),
+    // В будущем: S3Object { bucket: String, key: String }
+}
+
+pub struct LocalFileResolver {
+    config_repo: Arc<dyn ConfigurationRepository<Error = AppError>>,
+    instance_repo: Arc<dyn InstanceRepository<Error = AppError>>,
+    settings_repo: Arc<dyn SettingsRepository<Error = AppError>>,
+}
+
+impl_new!(LocalFileResolver,
+    config_repo: Arc<dyn ConfigurationRepository<Error = AppError>>,
+    instance_repo: Arc<dyn InstanceRepository<Error = AppError>>,
+    settings_repo: Arc<dyn SettingsRepository<Error = AppError>>);
+
+#[async_trait]
+impl FileResolver for LocalFileResolver {
+    async fn resolve_file(
+        &self,
+        config_id: ConfigurationId,
+        requested_path: &Path,
+        // access_level: u16,
+    ) -> AppResult<FileHandle> {
+        let config = self.config_repo.get_config(config_id).await?;
+        let root_path = self.settings_repo.get_instances_dir_path().await?;
+
+        let instance = self.instance_repo.get_instance(config.instance_id).await?;
+        let path = root_path
+            .join(instance.dir_name)
+            .join(&config.dir_name)
+            .join(requested_path);
+
+        // Тут же можно сделать проверку на Path Traversal (безопасность)
+        Ok(FileHandle::LocalV1(path))
     }
 }

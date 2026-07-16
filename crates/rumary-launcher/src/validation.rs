@@ -7,11 +7,11 @@ use crate::util;
 use crate::util::HashAlgo;
 use reqwest::IntoUrl;
 use reqwest_middleware::ClientWithMiddleware;
+use rumary_dto::mojang::dto::response::{AssetJson, VersionJson};
 use std::ops::Deref;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tokio::task::JoinSet;
-use rumary_dto::mojang::dto::response::{AssetJson, VersionJson};
 
 pub struct ValidationService {
     pub version_json: Arc<VersionJson>,
