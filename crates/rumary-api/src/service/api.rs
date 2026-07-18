@@ -99,14 +99,11 @@ async fn register(
 }
 
 /// Handler для аутентификации через логин и пароль
-/// Ключ Права: auth.method.login
 async fn login(
     State(state): State<Arc<AppState>>,
     jar: CookieJar,
     Json(payload): Json<LoginRequest>,
 ) -> AppResult<Response> {
-    // access checking
-    //...
     // action
     match state.auth.login(payload, state.totp.as_ref()).await? {
         LoginOutcome::Tokens(tokens) => Ok((
@@ -129,8 +126,6 @@ async fn verify_totp(
     jar: CookieJar,
     Json(payload): Json<TotpLoginRequest>,
 ) -> AppResult<(CookieJar, Json<TokenResponse>)> {
-    // access checking
-    //...
     // action
     let tokens = state.auth.verify_totp(payload, &state.totp).await?;
     Ok((
@@ -147,9 +142,6 @@ async fn refresh(
     State(state): State<Arc<AppState>>,
     jar: CookieJar,
 ) -> AppResult<(CookieJar, Json<TokenResponse>)> {
-    // access checking
-    //...
-    // action
     let refresh_token = jar
         .get(REFRESH_TOKEN_COOKIE)
         .map(|cookie| cookie.value().to_string())
@@ -161,9 +153,16 @@ async fn refresh(
             "missing refresh token id".to_string(),
         ))?;
 
+    let user_session = state.auth.get_user_session(refresh_token_id.into()).await?;
+
+    // access checking
+    // let user_session = state.auth
+    // action
+
+
     let tokens = state
         .auth
-        .refresh(&refresh_token, refresh_token_id.into())
+        .refresh(&refresh_token, user_session)
         .await?;
     Ok((
         with_session_cookies(jar, &state, &tokens),

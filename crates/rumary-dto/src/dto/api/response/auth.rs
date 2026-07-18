@@ -15,6 +15,14 @@ pub struct ClaimsResponse {
 }
 
 #[derive(Debug, Serialize)]
+pub struct ClaimsV2Response {
+    pub sub: String,
+    pub level: Vec<usize>,
+    pub exp: usize,
+    pub iat: usize,
+}
+
+#[derive(Debug, Serialize)]
 pub struct TotpRequiredResponse {
     pub user_id: Uuid,
 }

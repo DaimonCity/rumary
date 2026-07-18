@@ -1,141 +1,131 @@
 {
-  "auth.method.login": {
+  "auth.session.refresh": {
     "id": 1,
     "default": true,
     "active": true
   },
-  "auth.method.verify_totp": {
-    "id": 2,
-    "default": true,
-    "active": true
-  },
-  "auth.session.refresh": {
-    "id": 3,
-    "default": true,
-    "active": true
-  },
   "settings.instance_path.set": {
-    "id": 4,
+    "id": 2,
     "default": false,
     "active": true
   },
   "settings.instance_path.remove": {
-    "id": 5,
+    "id": 3,
     "default": false,
     "active": true
   },
   "configuration.method.create": {
-    "id": 6,
+    "id": 4,
     "default": false,
     "active": true
   },
   "configuration.method.list": {
-    "id": 7,
+    "id": 5,
     "default": false,
     "active": true
   },
   "configuration.instance_id.list": {
-    "id": 8,
+    "id": 6,
     "default": true,
     "active": true
   },
   "configuration.config_id.update": {
-    "id": 9,
+    "id": 7,
     "default": false,
     "active": true
   },
   "configuration.config_id.get": {
-    "id": 10,
+    "id": 8,
     "default": true,
     "active": true
   },
   "configuration.config_id.delete": {
-    "id": 11,
+    "id": 9,
     "default": false,
     "active": true
   },
   "configuration.config_id.download": {
-    "id": 12,
+    "id": 10,
     "default": true,
     "active": true
   },
   "instance.method.create": {
-    "id": 13,
+    "id": 11,
     "default": false,
     "active": true
   },
   "instance.method.list": {
-    "id": 14,
+    "id": 12,
     "default": true,
     "active": true
   },
   "instance.instance_id.update": {
-    "id": 15,
+    "id": 13,
     "default": false,
     "active": true
   },
   "instance.instance_id.get": {
-    "id": 16,
+    "id": 14,
     "default": true,
     "active": true
   },
   "instance.instance_id.delete": {
-    "id": 17,
+    "id": 15,
     "default": false,
     "active": true
   },
   "profile.method.list": {
-    "id": 18,
+    "id": 16,
     "default": false,
     "active": true
   },
   "profile.user_id.update": {
-    "id": 19,
+    "id": 17,
     "default": false,
     "active": true
   },
   "profile.user_id.get": {
-    "id": 20,
+    "id": 18,
     "default": false,
     "active": true
   },
   "profile.user_id.delete": {
-    "id": 21,
+    "id": 19,
     "default": false,
     "active": true
   },
   "role.method.create": {
-    "id": 22,
+    "id": 20,
     "default": false,
     "active": true
   },
   "role.method.list": {
-    "id": 23,
+    "id": 21,
     "default": false,
     "active": true
   },
   "role.role_id.add": {
-    "id": 24,
+    "id": 22,
     "default": false,
     "active": true
   },
   "role.role_id.remove": {
-    "id": 25,
+    "id": 23,
     "default": false,
     "active": true
   },
   "role.role_id.update": {
-    "id": 26,
+    "id": 24,
     "default": false,
     "active": true
   },
   "role.role_id.get": {
-    "id": 27,
+    "id": 25,
     "default": true,
     "active": true
   },
   "role.role_id.delete": {
-    "id": 28,
+    "id": 26,
     "default": false,
     "active": true
   }

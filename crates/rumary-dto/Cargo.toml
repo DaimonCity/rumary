@@ -7,12 +7,13 @@ version.workspace = true
 name = "rumary_dto"
 
 [dependencies]
+chrono.workspace = true
+bcrypt.workspace = true
 serde.workspace = true
 uuid.workspace = true
-url = "2.5.8"
-chrono = "0.4.45"
+url.workspace = true
+pretty_env_logger.workspace = true
 semver = "1.0.28"
-bcrypt = "0.19.2"
 
 
 [features]

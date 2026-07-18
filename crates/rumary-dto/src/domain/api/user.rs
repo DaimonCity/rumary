@@ -11,7 +11,7 @@ pub struct User {
     pub nickname: Nickname,
     pub password_hash: PasswordHash,
     pub access_level: AccessLevel,
-    pub role: RoleId,
+    pub roles: Vec<RoleId>,
     pub ban: Ban,
 }
 

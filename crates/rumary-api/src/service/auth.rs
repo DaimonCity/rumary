@@ -9,7 +9,7 @@ use chrono::{Duration, Utc};
 use http::header;
 use jsonwebtoken::{DecodingKey, EncodingKey, Header, Validation, decode, encode};
 // use rumary_dto::domain::api::AccessLevel;
-use rumary_dto::domain::api::{LoginOutcome, RoleType, User};
+use rumary_dto::domain::api::{LoginOutcome, RoleType, User, UserSession};
 use rumary_dto::domain::api::{NewUser, RefreshSessionUpdate};
 use rumary_dto::domain::api::{RoleId, WsTicketClaims, WsTicketV2Claims};
 use rumary_dto::domain::auth::expiration_time::ExpirationTime;
@@ -19,9 +19,7 @@ use rumary_dto::domain::value_object::auth::tokens::{TokenHash, TokenId};
 use rumary_dto::dto::api::request::{
     ClaimsV2Request, LoginRequest, RegisterRequest, TotpLoginRequest,
 };
-use rumary_dto::dto::api::response::{
-    ClaimsResponse, SessionTokensResponse, TotpRequiredResponse, WsTicketResponse,
-};
+use rumary_dto::dto::api::response::{/*ClaimsResponse,*/ ClaimsV2Response, SessionTokensResponse, TotpRequiredResponse, WsTicketResponse};
 use rumary_dto::impl_new;
 use std::sync::Arc;
 use uuid::Uuid;
@@ -81,8 +79,9 @@ impl AuthService {
     fn encode_access_token(&self, user: &User) -> AppResult<String> {
         let now = Utc::now();
         let exp = now + Duration::minutes(self.access_token_ttl_minutes);
-        let level = user.access_level.into();
-        let claims = ClaimsResponse {
+        let level = user.roles.clone();
+        let level = level.into_iter().map(Into::into).collect();
+        let claims = ClaimsV2Response {
             sub: user.id.to_string(),
             level,
             exp: exp.timestamp() as usize,
@@ -173,17 +172,9 @@ impl AuthProvider for AuthService {
     async fn refresh(
         &self,
         refresh_token: &str,
-        refresh_token_id: TokenId,
+        user: UserSession
     ) -> AppResult<SessionTokensResponse> {
-        let user = self
-            .session_repo
-            .find_user_by_token_id(refresh_token_id)
-            .await?
-            .ok_or(AppError::NotFound(
-                "totp user was not found while logging".to_string(),
-            ))?;
         let expires_at = user.expires_at;
-
         let user_id = user.id;
         if Utc::now() > expires_at {
             self.session_repo.clear_refresh_session(user_id).await?;
@@ -298,6 +289,15 @@ impl AuthProvider for AuthService {
             id: user.id,
             roles: claims.level.into_iter().map(RoleId::new).collect(),
         })
+    }
+
+    async fn get_user_session(&self, refresh_token_id: TokenId) -> AppResult<UserSession> {
+        self.session_repo
+            .find_user_by_token_id(refresh_token_id)
+            .await?
+            .ok_or(AppError::NotFound(
+                "totp user was not found while logging".to_string(),
+            ))
     }
 }
 
