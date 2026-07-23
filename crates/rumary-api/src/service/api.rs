@@ -13,7 +13,6 @@ use axum::{
 };
 use axum_extra::extract::CookieJar;
 use axum_extra::extract::cookie::{Cookie, SameSite};
-use http::HeaderMap;
 // use rumary_dto::domain::api::RoleType;
 use rumary_dto::domain::api::{LoginOutcome, RightKey, RoleId, UpdateRole};
 use rumary_dto::domain::user::UserId;
@@ -458,7 +457,7 @@ async fn delete_configuration(
 /// Ключ Права: configuration.<ConfigurationId>.download
 async fn download_file_handler(
     Path((config_id, filepath)): Path<(Uuid, PathBuf)>,
-    headers: HeaderMap,
+    headers: http::HeaderMap,
     State(state): State<Arc<AppState>>,
     auth_user: AuthenticatedUser,
 ) -> AppResult<http::Response<Body>> {
@@ -472,10 +471,16 @@ async fn download_file_handler(
     )
     .await?;
     // action
-    state
-        .file
-        .stream_file(config_id.into(), &filepath, &headers)
-        .await
+    if is_available {
+        return state
+            .file
+            .stream_file(config_id.into(), &filepath, &headers)
+            .await;
+    }
+    Err(AppError::Forbidden(format!(
+        "{} has not the needed right",
+        user_id
+    )))
 }
 
 ///////////////////
@@ -500,22 +505,16 @@ async fn set_instance_path(
         RightKey::SETTINGS_INSTANCE_PATH_SET_KEY,
     )
     .await?;
-    // action
-    // match admin_user.0 {
-    //     RoleType::User | RoleType::VipUser => Ok(http::StatusCode::FORBIDDEN),
-    //     RoleType::Worker => {
-    //         if admin_user.1 <= 10 {
-    //             return Ok(http::StatusCode::FORBIDDEN);
-    //         }
-    //         state.settings.add_instance_path(&request.path).await?;
-    //         Ok(http::StatusCode::CREATED)
-    //     }
-    //     RoleType::Owner => {
-    //         state.settings.add_instance_path(&request.path).await?;
-    //         Ok(http::StatusCode::CREATED)
-    //     }
-    // }
-    todo!()
+
+    if is_available {
+        state.settings.add_instance_path(&request.path).await?;
+        return Ok(http::StatusCode::OK);
+    }
+
+    Err(AppError::Forbidden(format!(
+        "{} has not the needed right",
+        user_id
+    )))
 }
 
 /// Handler для настройки пути папки с instances на сервере
@@ -533,23 +532,16 @@ async fn remove_instance_path(
         RightKey::SETTINGS_INSTANCE_PATH_REMOVE_KEY,
     )
     .await?;
-    // action
-    // match admin_user.0 {
-    //     RoleType::User | RoleType::VipUser => Ok(http::StatusCode::FORBIDDEN),
-    //     RoleType::Worker => {
-    //         if admin_user.1 <= 10 {
-    //             // Не знаю, откуда брать это число, нужна какая-то таблица ролей
-    //             return Ok(http::StatusCode::FORBIDDEN);
-    //         }
-    //         state.settings.remove_instance_path().await?;
-    //         Ok(http::StatusCode::ACCEPTED)
-    //     }
-    //     RoleType::Owner => {
-    //         state.settings.remove_instance_path().await?;
-    //         Ok(http::StatusCode::ACCEPTED)
-    //     }
-    // }
-    todo!()
+
+    if is_available {
+        state.settings.remove_instance_path().await?;
+        return Ok(http::StatusCode::OK);
+    }
+
+    Err(AppError::Forbidden(format!(
+        "{} has not the needed right",
+        user_id
+    )))
 }
 
 ///////////////////
@@ -568,10 +560,18 @@ async fn create_role(
 
     // access checking
     let is_available = check_available(state.clone(), user_id, RightKey::CREATE_ROLE_KEY).await?;
+
     // action
-    let mut role = state.role.write().await;
-    role.create_role(&payload.name).await?;
-    Ok(http::StatusCode::CREATED)
+    if is_available {
+        let mut role = state.role.write().await;
+        role.create_role(&payload.name).await?;
+        return Ok(http::StatusCode::CREATED);
+    }
+
+    Err(AppError::Forbidden(format!(
+        "{} has not the needed right",
+        user_id
+    )))
 }
 
 async fn update_role(
@@ -589,16 +589,24 @@ async fn update_role(
         RightKey::update_role(role_id.to_string().as_str()),
     )
     .await?;
+
     // action
-    let mut role = state.role.write().await;
-    let update: UpdateRole = payload.into();
-    role.update_role(
-        RoleId::new(role_id),
-        &update.allow_keys,
-        &update.remove_keys,
-    )
-    .await?;
-    Ok(http::StatusCode::OK)
+    if is_available {
+        let mut role = state.role.write().await;
+        let update: UpdateRole = payload.into();
+        role.update_role(
+            RoleId::new(role_id),
+            &update.allow_keys,
+            &update.remove_keys,
+        )
+        .await?;
+        return Ok(http::StatusCode::OK);
+    }
+
+    Err(AppError::Forbidden(format!(
+        "{} has not the needed right",
+        user_id
+    )))
 }
 
 async fn get_role(
@@ -616,8 +624,14 @@ async fn get_role(
     )
     .await?;
     // action
-    let role = state.role.read().await;
-    Ok(Json(role.get_role_info(RoleId::new(role_id))?))
+    if is_available {
+        let role = state.role.read().await;
+        return Ok(Json(role.get_role_info(RoleId::new(role_id))?));
+    }
+    Err(AppError::Forbidden(format!(
+        "{} has not the needed right",
+        user_id
+    )))
 }
 
 async fn list_roles(
@@ -629,8 +643,14 @@ async fn list_roles(
     // access checking
     let is_available = check_available(state.clone(), user_id, RightKey::LIST_ROLES_KEY).await?;
     // action
-    let role = state.role.read().await;
-    Ok(Json(role.list_role()?))
+    if is_available {
+        let role = state.role.read().await;
+        return Ok(Json(role.list_role()?));
+    }
+    Err(AppError::Forbidden(format!(
+        "{} has not the needed right",
+        user_id
+    )))
 }
 async fn delete_role(
     State(state): State<Arc<AppState>>,
@@ -647,9 +667,15 @@ async fn delete_role(
     )
     .await?;
     // action
-    let mut role = state.role.write().await;
-    role.remove_role(RoleId::new(role_id))?;
-    Ok(http::StatusCode::OK)
+    if is_available {
+        let mut role = state.role.write().await;
+        role.remove_role(RoleId::new(role_id))?;
+        return Ok(http::StatusCode::OK);
+    }
+    Err(AppError::Forbidden(format!(
+        "{} has not the needed right",
+        user_id
+    )))
 }
 ///////////////////
 
