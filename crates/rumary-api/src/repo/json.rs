@@ -56,7 +56,7 @@ impl LocalRightsRepo {
 impl RightsRepository for LocalRightsRepo {
     type Error = AppError;
 
-    async fn add_right(&self, right_key: RightKey, default_value: bool) -> Result<(), Self::Error> {
+    async fn add_right(&self, right_key: RightKey<'static>, default_value: bool) -> Result<(), Self::Error> {
         let mut rights = self.read_rights_or_empty().await?;
         let key = String::from(right_key);
 
@@ -72,7 +72,7 @@ impl RightsRepository for LocalRightsRepo {
 
     async fn update_right(
         &self,
-        right_key: RightKey,
+        right_key: RightKey<'static>,
         default_value: bool,
     ) -> Result<(), Self::Error> {
         let mut rights = self.read_rights_or_empty().await?;
@@ -92,7 +92,7 @@ impl RightsRepository for LocalRightsRepo {
         Ok(rights.into())
     }
 
-    async fn remove_right(&self, right_key: RightKey) -> Result<(), Self::Error> {
+    async fn remove_right(&self, right_key: RightKey<'static>) -> Result<(), Self::Error> {
         let mut rights = self.read_rights_or_empty().await?;
         let key = String::from(right_key);
 

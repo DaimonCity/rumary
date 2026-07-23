@@ -4,7 +4,7 @@ use crate::service::file::FileHandle;
 use crate::service::totp::TotpService;
 use crate::service::userprofile::ProfileResponse;
 use async_trait::async_trait;
-use rumary_dto::domain::api::{LoginOutcome, UserSession};
+use rumary_dto::domain::api::{LoginOutcome, RoleId, UserSession};
 use rumary_dto::domain::auth::tokens::TokenId;
 use rumary_dto::domain::configuration::ConfigurationId;
 use rumary_dto::domain::user::UserId;
@@ -36,7 +36,7 @@ pub trait AuthProvider: Send + Sync {
     async fn refresh(
         &self,
         refresh_token: &str,
-        user: UserSession
+        user_session: UserSession
     ) -> Result<SessionTokensResponse, Self::Error>; // +
 
     async fn logout(&self, user_id: UserId) -> Result<(), Self::Error>; // +
@@ -55,6 +55,8 @@ pub trait AuthProvider: Send + Sync {
 pub trait UserProfileProvider: Send + Sync {
     type Error;
     async fn me(&self, user_id: UserId) -> Result<ProfileResponse, Self::Error>;
+    
+    async fn users_roles(&self, user_id: UserId) -> Result<Vec<RoleId>, Self::Error>;
     async fn delete_me(&self, user_id: UserId, payload: DeleteMeRequest)
     -> Result<(), Self::Error>;
 }

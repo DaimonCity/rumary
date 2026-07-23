@@ -300,7 +300,7 @@ impl RolesRepository for PostgresRepo {
 impl RightsRepository for PostgresRepo {
     type Error = AppError;
 
-    async fn add_right(&self, right_key: RightKey, default_value: bool) -> Result<(), Self::Error> {
+    async fn add_right(&self, right_key: RightKey<'static>, default_value: bool) -> Result<(), Self::Error> {
         todo!()
         // self.ensure_rights_table().await?;
         // let key = String::from(right_key);
@@ -322,7 +322,7 @@ impl RightsRepository for PostgresRepo {
 
     async fn update_right(
         &self,
-        right_key: RightKey,
+        right_key: RightKey<'static>,
         default_value: bool,
     ) -> Result<(), Self::Error> {
         todo!()
@@ -352,7 +352,7 @@ impl RightsRepository for PostgresRepo {
         Ok(self.load_rights().await?.into())
     }
 
-    async fn remove_right(&self, right_key: RightKey) -> Result<(), Self::Error> {
+    async fn remove_right(&self, right_key: RightKey<'static>) -> Result<(), Self::Error> {
         todo!()
         // self.ensure_rights_table().await?;
         // let key = String::from(right_key);

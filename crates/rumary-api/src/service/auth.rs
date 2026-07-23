@@ -172,10 +172,10 @@ impl AuthProvider for AuthService {
     async fn refresh(
         &self,
         refresh_token: &str,
-        user: UserSession
+        user_session: UserSession
     ) -> AppResult<SessionTokensResponse> {
-        let expires_at = user.expires_at;
-        let user_id = user.id;
+        let expires_at = user_session.expires_at;
+        let user_id = user_session.id;
         if Utc::now() > expires_at {
             self.session_repo.clear_refresh_session(user_id).await?;
             return Err(AppError::Unauthorized(
@@ -183,7 +183,7 @@ impl AuthProvider for AuthService {
             ));
         }
 
-        let stored_hash = user.refresh_token_hash;
+        let stored_hash = user_session.refresh_token_hash;
         let is_valid = stored_hash.verify(refresh_token)?;
 
         if !is_valid {

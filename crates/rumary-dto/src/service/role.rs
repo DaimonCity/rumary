@@ -3,13 +3,13 @@ use crate::dto::api::request::UpdateRoleRequest;
 use crate::dto::api::response::role::RoleRightsResponse;
 use std::collections::HashMap;
 
-impl From<String> for RightKey {
+impl<'a> From<String> for RightKey<'a> {
     fn from(s: String) -> Self {
         Self::new(s)
     }
 }
 
-impl From<UpdateRoleRequest> for UpdateRole {
+impl From<UpdateRoleRequest> for UpdateRole<'_> {
     fn from(value: UpdateRoleRequest) -> Self {
         Self::new(
             value.allow_keys.into_iter().map(Into::into).collect(),

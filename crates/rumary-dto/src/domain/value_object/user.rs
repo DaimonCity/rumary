@@ -1,6 +1,7 @@
 use bcrypt::{DEFAULT_COST, hash, verify};
 use std::fmt::Formatter;
 use std::ops::Deref;
+use std::str::FromStr;
 use uuid::Uuid;
 
 const MIN_LEN_LOGIN: usize = 3;
@@ -36,6 +37,7 @@ impl From<Uuid> for UserId {
         Self(id)
     }
 }
+
 #[derive(Clone, Debug)]
 pub struct Login(String);
 #[derive(Clone, Debug)]

@@ -15,7 +15,8 @@ use axum_extra::extract::CookieJar;
 use axum_extra::extract::cookie::{Cookie, SameSite};
 use http::HeaderMap;
 // use rumary_dto::domain::api::RoleType;
-use rumary_dto::domain::api::{LoginOutcome, RoleId, UpdateRole};
+use rumary_dto::domain::api::{LoginOutcome, RightKey, RoleId, UpdateRole};
+use rumary_dto::domain::user::UserId;
 use rumary_dto::dto::api::request::{
     DeleteMeRequest, InstancePathRequest, LoginRequest, RegisterRequest, TotpLoginRequest,
     UpdateConfigurationRequest, UpdateInstanceResponse,
@@ -29,6 +30,7 @@ use rumary_dto::dto::api::response::{
 use serde_json::json;
 use std::path::PathBuf;
 use std::sync::Arc;
+use tokio::task::JoinSet;
 use uuid::Uuid;
 
 const REFRESH_TOKEN_COOKIE: &str = "refresh_token";
@@ -120,7 +122,6 @@ async fn login(
 }
 
 /// Handler для аутентификации через totp
-/// Ключ Права: auth.method.verify_totp
 async fn verify_totp(
     State(state): State<Arc<AppState>>,
     jar: CookieJar,
@@ -153,23 +154,31 @@ async fn refresh(
             "missing refresh token id".to_string(),
         ))?;
 
-    let user_session = state.auth.get_user_session(refresh_token_id.into()).await?;
+    let user_session = state
+        .auth
+        .clone()
+        .get_user_session(refresh_token_id.into())
+        .await?;
+    let user_id = user_session.id;
 
     // access checking
-    // let user_session = state.auth
-    // action
+    let is_available = check_available(state.clone(), user_id, RightKey::REFRESH).await?;
 
+    if is_available {
+        // action
+        let tokens = state.auth.refresh(&refresh_token, user_session).await?;
+        return Ok((
+            with_session_cookies(jar, &state, &tokens),
+            Json(TokenResponse {
+                access_token: tokens.access_token,
+            }),
+        ));
+    }
 
-    let tokens = state
-        .auth
-        .refresh(&refresh_token, user_session)
-        .await?;
-    Ok((
-        with_session_cookies(jar, &state, &tokens),
-        Json(TokenResponse {
-            access_token: tokens.access_token,
-        }),
-    ))
+    Err(AppError::Forbidden(format!(
+        "{} has not the needed right",
+        user_id
+    )))
 }
 
 async fn logout(
@@ -193,11 +202,25 @@ async fn get_me(
     State(state): State<Arc<AppState>>,
     auth_user: AuthenticatedUser,
 ) -> AppResult<Json<ProfileResponse>> {
+    let user_id = auth_user.id;
     // access checking
-    //...
-    // action
-    let profile = state.user_profile.me(auth_user.id).await?;
-    Ok(Json(profile))
+    let is_available = check_available(
+        state.clone(),
+        user_id,
+        RightKey::get_me_key(user_id.to_string().as_str()),
+    )
+    .await?;
+
+    if is_available {
+        // action
+        let profile = state.user_profile.me(auth_user.id).await?;
+        return Ok(Json(profile));
+    }
+
+    Err(AppError::Forbidden(format!(
+        "{} has not the needed right",
+        user_id
+    )))
 }
 
 /// Handler для получения информации о пользователе через access_token
@@ -208,11 +231,26 @@ async fn delete_me(
     auth_user: AuthenticatedUser,
     Json(payload): Json<DeleteMeRequest>,
 ) -> AppResult<CookieJar> {
+    let user_id = auth_user.id;
+
     // access checking
-    //...
-    // action
-    state.user_profile.delete_me(auth_user.id, payload).await?;
-    Ok(clear_session_cookies(jar, &state))
+    let is_available = check_available(
+        state.clone(),
+        user_id,
+        RightKey::delete_me_key(user_id.to_string().as_str()),
+    )
+    .await?;
+
+    if is_available {
+        // action
+        state.user_profile.delete_me(auth_user.id, payload).await?;
+        return Ok(clear_session_cookies(jar, &state));
+    }
+
+    Err(AppError::Forbidden(format!(
+        "{} has not the needed right",
+        user_id
+    )))
 }
 
 ///////////////////
@@ -227,10 +265,20 @@ async fn create_instance(
     State(state): State<Arc<AppState>>,
     auth_user: AuthenticatedUser,
 ) -> AppResult<http::StatusCode> {
+    let user_id = auth_user.id;
+
     // access checking
-    //...
-    // action
-    todo!()
+    let is_available =
+        check_available(state.clone(), user_id, RightKey::CREATE_INSTANCE_KEY).await?;
+
+    if is_available {
+        // action
+        todo!()
+    }
+    Err(AppError::Forbidden(format!(
+        "{} has not the needed right",
+        user_id
+    )))
 }
 
 /// Handler для получения информации о instance, если доступен по правам
@@ -240,8 +288,15 @@ async fn get_instance(
     State(state): State<Arc<AppState>>,
     auth_user: AuthenticatedUser,
 ) -> AppResult<Json<GetInstanceResponse>> {
+    let user_id = auth_user.id;
+
     // access checking
-    //...
+    let is_available = check_available(
+        state.clone(),
+        user_id,
+        RightKey::get_instance_key(instance_id.to_string().as_str()),
+    )
+    .await?;
     // action
     todo!()
 }
@@ -252,8 +307,10 @@ async fn list_instance(
     State(state): State<Arc<AppState>>,
     auth_user: AuthenticatedUser,
 ) -> AppResult<Json<InstancesResponse>> {
+    let user_id = auth_user.id;
+
     // access checking
-    //...
+    let is_available = check_available(state.clone(), user_id, RightKey::LIST_INSTANCE_KEY).await?;
     // action
     todo!()
 }
@@ -266,8 +323,15 @@ async fn update_instance(
     auth_user: AuthenticatedUser,
     Json(payload): Json<UpdateInstanceResponse>,
 ) -> AppResult<Json<GetInstanceResponse>> {
+    let user_id = auth_user.id;
+
     // access checking
-    //...
+    let is_available = check_available(
+        state.clone(),
+        user_id,
+        RightKey::update_instance_key(instance_id.to_string().as_str()),
+    )
+    .await?;
     // action
     todo!()
 }
@@ -279,8 +343,15 @@ async fn delete_instance(
     State(state): State<Arc<AppState>>,
     auth_user: AuthenticatedUser,
 ) -> AppResult<http::StatusCode> {
+    let user_id = auth_user.id;
+
     // access checking
-    //...
+    let is_available = check_available(
+        state.clone(),
+        user_id,
+        RightKey::delete_instance_key(instance_id.to_string().as_str()),
+    )
+    .await?;
     // action
     todo!()
 }
@@ -297,8 +368,11 @@ async fn create_configuration(
     State(state): State<Arc<AppState>>,
     auth_user: AuthenticatedUser,
 ) -> AppResult<http::StatusCode> {
+    let user_id = auth_user.id;
+
     // access checking
-    //...
+    let is_available =
+        check_available(state.clone(), user_id, RightKey::CREATE_CONFIGURATION_KEY).await?;
     // action
     todo!()
 }
@@ -310,8 +384,15 @@ async fn get_configuration(
     State(state): State<Arc<AppState>>,
     auth_user: AuthenticatedUser,
 ) -> AppResult<Json<GetConfigurationResponse>> {
+    let user_id = auth_user.id;
+
     // access checking
-    //...
+    let is_available = check_available(
+        state.clone(),
+        user_id,
+        RightKey::get_configuration_key(config_id.to_string().as_str()),
+    )
+    .await?;
     // action
     todo!()
 }
@@ -322,8 +403,11 @@ async fn list_configuration(
     State(state): State<Arc<AppState>>,
     auth_user: AuthenticatedUser,
 ) -> AppResult<Json<GetConfigurationResponse>> {
+    let user_id = auth_user.id;
+
     // access checking
-    //...
+    let is_available =
+        check_available(state.clone(), user_id, RightKey::LIST_CONFIGURATION_KEY).await?;
     // action
     todo!()
 }
@@ -336,8 +420,15 @@ async fn update_configuration(
     auth_user: AuthenticatedUser,
     Json(payload): Json<UpdateConfigurationRequest>,
 ) -> AppResult<Json<GetConfigurationResponse>> {
+    let user_id = auth_user.id;
+
     // access checking
-    //...
+    let is_available = check_available(
+        state.clone(),
+        user_id,
+        RightKey::update_configuration_key(config_id.to_string().as_str()),
+    )
+    .await?;
     // action
     todo!()
 }
@@ -350,8 +441,15 @@ async fn delete_configuration(
     auth_user: AuthenticatedUser,
     Json(payload): Json<UpdateConfigurationRequest>,
 ) -> AppResult<Json<GetConfigurationResponse>> {
+    let user_id = auth_user.id;
+
     // access checking
-    //...
+    let is_available = check_available(
+        state.clone(),
+        user_id,
+        RightKey::delete_configuration_key(config_id.to_string().as_str()),
+    )
+    .await?;
     // action
     todo!()
 }
@@ -362,18 +460,21 @@ async fn download_file_handler(
     Path((config_id, filepath)): Path<(Uuid, PathBuf)>,
     headers: HeaderMap,
     State(state): State<Arc<AppState>>,
-    authenticated_user: AuthenticatedUser,
+    auth_user: AuthenticatedUser,
 ) -> AppResult<http::Response<Body>> {
+    let user_id = auth_user.id;
+
     // access checking
-    //...
+    let is_available = check_available(
+        state.clone(),
+        user_id,
+        RightKey::download_configuration_key(config_id.to_string().as_str()),
+    )
+    .await?;
     // action
     state
         .file
-        .stream_file(
-            config_id.into(),
-            &filepath,
-            &headers,
-        )
+        .stream_file(config_id.into(), &filepath, &headers)
         .await
 }
 
@@ -387,11 +488,18 @@ async fn download_file_handler(
 /// Ключ Права: settings.instance_path.set
 async fn set_instance_path(
     State(state): State<Arc<AppState>>,
-    authenticated_user: AuthenticatedUser,
+    auth_user: AuthenticatedUser,
     Json(request): Json<InstancePathRequest>,
 ) -> AppResult<http::StatusCode> {
+    let user_id = auth_user.id;
+
     // access checking
-    //...
+    let is_available = check_available(
+        state.clone(),
+        user_id,
+        RightKey::SETTINGS_INSTANCE_PATH_SET_KEY,
+    )
+    .await?;
     // action
     // match admin_user.0 {
     //     RoleType::User | RoleType::VipUser => Ok(http::StatusCode::FORBIDDEN),
@@ -414,10 +522,17 @@ async fn set_instance_path(
 /// Ключ Права: settings.instance_path.remove
 async fn remove_instance_path(
     State(state): State<Arc<AppState>>,
-    authenticated_user: AuthenticatedUser,
+    auth_user: AuthenticatedUser,
 ) -> AppResult<http::StatusCode> {
+    let user_id = auth_user.id;
+
     // access checking
-    //...
+    let is_available = check_available(
+        state.clone(),
+        user_id,
+        RightKey::SETTINGS_INSTANCE_PATH_REMOVE_KEY,
+    )
+    .await?;
     // action
     // match admin_user.0 {
     //     RoleType::User | RoleType::VipUser => Ok(http::StatusCode::FORBIDDEN),
@@ -446,11 +561,13 @@ async fn remove_instance_path(
 /// Ключ Права: role.method.create
 async fn create_role(
     State(state): State<Arc<AppState>>,
-    authenticated_user: AuthenticatedUser,
+    auth_user: AuthenticatedUser,
     Json(payload): Json<NewRoleRequest>,
 ) -> AppResult<http::StatusCode> {
+    let user_id = auth_user.id;
+
     // access checking
-    //...
+    let is_available = check_available(state.clone(), user_id, RightKey::CREATE_ROLE_KEY).await?;
     // action
     let mut role = state.role.write().await;
     role.create_role(&payload.name).await?;
@@ -460,11 +577,18 @@ async fn create_role(
 async fn update_role(
     State(state): State<Arc<AppState>>,
     Path(role_id): Path<usize>,
-    authenticated_user: AuthenticatedUser,
+    auth_user: AuthenticatedUser,
     Json(payload): Json<UpdateRoleRequest>,
 ) -> AppResult<http::StatusCode> {
+    let user_id = auth_user.id;
+
     // access checking
-    //...
+    let is_available = check_available(
+        state.clone(),
+        user_id,
+        RightKey::update_role(role_id.to_string().as_str()),
+    )
+    .await?;
     // action
     let mut role = state.role.write().await;
     let update: UpdateRole = payload.into();
@@ -480,10 +604,17 @@ async fn update_role(
 async fn get_role(
     State(state): State<Arc<AppState>>,
     Path(role_id): Path<usize>,
-    authenticated_user: AuthenticatedUser,
+    auth_user: AuthenticatedUser,
 ) -> AppResult<Json<GetRoleResponse>> {
+    let user_id = auth_user.id;
+
     // access checking
-    //...
+    let is_available = check_available(
+        state.clone(),
+        user_id,
+        RightKey::get_role(role_id.to_string().as_str()),
+    )
+    .await?;
     // action
     let role = state.role.read().await;
     Ok(Json(role.get_role_info(RoleId::new(role_id))?))
@@ -491,10 +622,12 @@ async fn get_role(
 
 async fn list_roles(
     State(state): State<Arc<AppState>>,
-    authenticated_user: AuthenticatedUser,
+    auth_user: AuthenticatedUser,
 ) -> AppResult<Json<Vec<GetRoleResponse>>> {
+    let user_id = auth_user.id;
+
     // access checking
-    //...
+    let is_available = check_available(state.clone(), user_id, RightKey::LIST_ROLES_KEY).await?;
     // action
     let role = state.role.read().await;
     Ok(Json(role.list_role()?))
@@ -502,10 +635,17 @@ async fn list_roles(
 async fn delete_role(
     State(state): State<Arc<AppState>>,
     Path(role_id): Path<usize>,
-    authenticated_user: AuthenticatedUser,
+    auth_user: AuthenticatedUser,
 ) -> AppResult<http::StatusCode> {
+    let user_id = auth_user.id;
+
     // access checking
-    //...
+    let is_available = check_available(
+        state.clone(),
+        user_id,
+        RightKey::delete_role(role_id.to_string().as_str()),
+    )
+    .await?;
     // action
     let mut role = state.role.write().await;
     role.remove_role(RoleId::new(role_id))?;
@@ -557,4 +697,47 @@ fn clear_session_cookies(jar: CookieJar, state: &AppState) -> CookieJar {
 
     jar.remove(refresh_token_cookie)
         .remove(refresh_token_id_cookie)
+}
+
+async fn check_available(
+    state: Arc<AppState>,
+    user_id: UserId,
+    key: RightKey<'static>,
+) -> AppResult<bool> {
+    let users_roles = state.user_profile.users_roles(user_id).await?;
+    let mut set = JoinSet::new();
+
+    for rid in users_roles {
+        // Клонируем Arc<AppState>, ключ и ID роли для ПЕРЕДАЧИ ВНУТРЬ таски
+        let state = Arc::clone(&state);
+        let key = key.clone();
+
+        set.spawn(async move {
+            // 2. Блокировку (read) берем ИНСАЙД асинхронной таски!
+            // Теперь guard ссылается на клонированный Arc, который живёт внутри таски.
+            let role = state.role.read().await;
+            role.is_available_action(&rid, &key).await
+        });
+    }
+
+    let mut is_available = false;
+
+    // 3. Собираем результаты
+    while let Some(res) = set.join_next().await {
+        // Если метод is_available_action возвращает Result<bool, Error>
+        if let Ok(Ok(true)) = res {
+            is_available = true;
+            set.abort_all(); // Отменяем оставшиеся таски
+            break;
+        }
+
+        // Если метод is_available_action возвращает просто bool (без Result):
+        // if let Ok(true) = res {
+        //     is_available = true;
+        //     set.abort_all();
+        //     break;
+        // }
+    }
+
+    Ok(is_available)
 }

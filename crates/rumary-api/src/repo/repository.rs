@@ -63,7 +63,7 @@ pub trait SessionRepository: Send + Sync {
     type Error;
     async fn find_user_by_token_id(
         &self,
-        token_uuid: TokenId,
+        token_id: TokenId,
     ) -> Result<Option<UserSession>, Self::Error>;
     async fn save_refresh_session(
         &self,
@@ -106,14 +106,14 @@ pub trait RolesRepository: Send + Sync {
 #[async_trait]
 pub trait RightsRepository: Send + Sync {
     type Error;
-    async fn add_right(&self, right_key: RightKey, default_value: bool) -> Result<(), Self::Error>;
+    async fn add_right(&self, right_key: RightKey<'static>, default_value: bool) -> Result<(), Self::Error>;
     async fn update_right(
         &self,
-        right_key: RightKey,
+        right_key: RightKey<'static>,
         default_value: bool,
     ) -> Result<(), Self::Error>;
     async fn get_rights(&self) -> Result<Rights, Self::Error>;
-    async fn remove_right(&self, right_key: RightKey) -> Result<(), Self::Error>;
+    async fn remove_right(&self, right_key: RightKey<'static>) -> Result<(), Self::Error>;
 }
 
 #[async_trait]

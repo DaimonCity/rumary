@@ -1,5 +1,5 @@
 use crate::domain::api::{AccessLevel, RoleId};
-use crate::domain::auth::tokens::TokenHash;
+use crate::domain::auth::tokens::{TokenHash, TokenId};
 use crate::domain::user::{Login, Nickname, PasswordHash, UserId};
 use chrono::{DateTime, Utc};
 use uuid::Uuid;
@@ -17,7 +17,7 @@ pub struct User {
 
 pub struct UserSession {
     pub id: UserId,
-    pub token_id: Uuid,
+    pub token_id: TokenId,
     pub refresh_token_hash: TokenHash,
     pub expires_at: DateTime<Utc>,
 }

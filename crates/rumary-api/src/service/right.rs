@@ -4,9 +4,9 @@ use std::collections::HashMap;
 
 pub struct Rights {
     rights_ids: Vec<RightId>,
-    rights_keys: Vec<RightKey>,
+    rights_keys: Vec<RightKey<'static>>,
     default_values: Vec<bool>,
-    index_by_key: HashMap<RightKey, usize>,
+    index_by_key: HashMap<RightKey<'static>, usize>,
 }
 
 impl Rights {
@@ -67,3 +67,4 @@ impl From<RightFromRow> for Rights {
         }
     }
 }
+

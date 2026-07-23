@@ -116,11 +116,11 @@ impl RoleService {
         let _ = roles.into_iter().map(|role| self.insert_role(role));
     }
 
-    pub async fn update_role(
+    pub async fn update_role<'a>(
         &mut self,
         rid: RoleId,
-        allow_keys: &[RightKey],
-        remove_keys: &[RightKey],
+        allow_keys: &[RightKey<'a>],
+        remove_keys: &[RightKey<'a>],
     ) -> AppResult<RoleId> {
         let (allow_rights, remove_rights) = {
             let rights_handle = &self.rights;
@@ -196,10 +196,10 @@ impl RoleService {
         Ok(())
     }
 
-    pub async fn is_available_action(
+    pub async fn is_available_action<'a>(
         &self,
         user_role_id: &RoleId,
-        right_key: &RightKey,
+        right_key: &RightKey<'a>,
     ) -> AppResult<bool> {
         let role = self.get_role(user_role_id)?;
         let right_id = self.rights.get_right(right_key)?;
@@ -229,7 +229,7 @@ impl RoleService {
         ids: &[impl Display],
         actions: &[&str],
         key_word: &str,
-    ) -> Vec<RightKey> {
+    ) -> Vec<RightKey<'static>> {
         ids.iter()
             .flat_map(|id| {
                 actions
