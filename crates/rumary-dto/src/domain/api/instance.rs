@@ -1,4 +1,5 @@
 use crate::domain::api::loader::Loader;
+use crate::domain::api::RightKey;
 use crate::domain::instance::InstanceId;
 use crate::domain::name::{Description, DirectoryName, DisplayName};
 use crate::domain::url::IconUrl;
@@ -30,4 +31,16 @@ pub struct Instance {
     pub version: Version,
     pub description: Description,
     pub loader: Loader,
+}
+
+impl Instance {
+    /// Возвращает базовые права, связанные с этим инстансом, и их статус по умолчанию
+    pub fn default_rights_setup(&self) -> Vec<(RightKey<'static>, bool)> {
+        let id_str = self.id.to_string();
+        vec![
+            (RightKey::get_instance_key(&id_str), false),
+            (RightKey::update_instance_key(&id_str), false),
+            (RightKey::delete_instance_key(&id_str), false),
+        ]
+    }
 }

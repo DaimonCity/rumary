@@ -9,6 +9,7 @@ use rumary_dto::dto::api::request::{
 };
 use rumary_dto::dto::api::response::GetInstanceResponse;
 use std::sync::Arc;
+use rumary_dto::domain::instance::InstanceId;
 
 pub struct InstanceService {
     instance_repo: Arc<dyn InstanceRepository<Error = AppError>>,
@@ -74,9 +75,13 @@ impl InstanceService {
         Ok(instance.into())
     }
 
-    /// instance.<instance-uuid>.list
-    pub async fn list_instances(&self) -> AppResult<Vec<GetInstanceResponse>> {
-        let instances = self.instance_repo.list_instances().await?;
-        Ok(instances.into_iter().map(|i| i.into()).collect())
+    /// instance.method.list
+    pub async fn list_instances(&self, available_ids: &[InstanceId]) -> AppResult<Vec<GetInstanceResponse>> {
+        let instances = self.instance_repo.list_instances(available_ids).await?;
+        Ok(instances.into_iter().map(Into::into).collect())
+    }
+
+    pub async fn delete_instance(&self, instance_id: InstanceId) -> AppResult<Instance> {
+        self.instance_repo.delete_instance(instance_id).await
     }
 }

@@ -33,8 +33,11 @@ pub trait InstanceRepository: Send + Sync {
         update_instance: UpdateInstance,
     ) -> Result<Instance, Self::Error>;
     async fn get_instance(&self, id: InstanceId) -> Result<Instance, Self::Error>;
-    async fn delete_instance(&self, id: InstanceId) -> Result<(), Self::Error>;
-    async fn list_instances(&self) -> Result<Vec<Instance>, Self::Error>;
+    async fn delete_instance(&self, id: InstanceId) -> Result<Instance, Self::Error>;
+    async fn list_instances(
+        &self,
+        available_ids: &[InstanceId],
+    ) -> Result<Vec<Instance>, Self::Error>;
 }
 
 #[async_trait]
@@ -50,12 +53,15 @@ pub trait ConfigurationRepository: Send + Sync {
         update_instance: UpdateConfiguration,
     ) -> Result<Configuration, Self::Error>;
     async fn get_config(&self, id: ConfigurationId) -> Result<Configuration, Self::Error>;
-    async fn delete_config(&self, id: ConfigurationId) -> Result<(), Self::Error>;
-    async fn list_configs(
+    async fn delete_config(&self, id: ConfigurationId) -> Result<Configuration, Self::Error>;
+    async fn list_configs_by_instance(
         &self,
         instance_id: InstanceId,
     ) -> Result<Vec<Configuration>, Self::Error>;
-    async fn list_all_configs(&self) -> Result<Vec<Configuration>, Self::Error>;
+    async fn list_all_configs(
+        &self,
+        available_ids: &[ConfigurationId],
+    ) -> Result<Vec<Configuration>, Self::Error>;
 }
 
 #[async_trait]
@@ -106,7 +112,16 @@ pub trait RolesRepository: Send + Sync {
 #[async_trait]
 pub trait RightsRepository: Send + Sync {
     type Error;
-    async fn add_right(&self, right_key: RightKey<'static>, default_value: bool) -> Result<(), Self::Error>;
+    async fn add_right(
+        &self,
+        right_key: RightKey<'static>,
+        default_value: bool,
+    ) -> Result<(), Self::Error>;
+    async fn add_rights(
+        &self,
+        right_keys: &[RightKey<'static>],
+        default_value: &[bool],
+    ) -> Result<(), Self::Error>;
     async fn update_right(
         &self,
         right_key: RightKey<'static>,
@@ -114,6 +129,7 @@ pub trait RightsRepository: Send + Sync {
     ) -> Result<(), Self::Error>;
     async fn get_rights(&self) -> Result<Rights, Self::Error>;
     async fn remove_right(&self, right_key: RightKey<'static>) -> Result<(), Self::Error>;
+    async fn remove_rights(&self, right_keys: &[RightKey<'static>]) -> Result<(), Self::Error>;
 }
 
 #[async_trait]

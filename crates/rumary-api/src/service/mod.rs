@@ -1,8 +1,8 @@
 pub mod api;
 pub mod auth;
-mod configurations;
+pub mod configurations;
 pub mod file;
-mod instances;
+pub mod instances;
 pub mod right;
 pub mod roles;
 pub mod settings;

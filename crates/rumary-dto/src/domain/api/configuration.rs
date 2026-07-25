@@ -1,3 +1,4 @@
+use crate::domain::api::RightKey;
 use crate::domain::configuration::ConfigurationId;
 use crate::domain::instance::InstanceId;
 use crate::domain::name::{DirectoryName, DisplayName};
@@ -23,4 +24,15 @@ pub struct Configuration {
     pub dir_name: DirectoryName,
     pub display_name: DisplayName,
     pub instance_id: InstanceId,
+}
+
+impl Configuration {
+    pub fn default_rights_setup(&self) -> Vec<(RightKey<'static>, bool)> {
+        let id_str = self.id.to_string();
+        vec![
+            (RightKey::get_configuration_key(&id_str), false),
+            (RightKey::update_configuration_key(&id_str), false),
+            (RightKey::delete_configuration_key(&id_str), false),
+        ]
+    }
 }

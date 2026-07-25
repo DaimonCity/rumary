@@ -221,11 +221,11 @@ impl InstanceRepository for PostgresRepo {
         todo!()
     }
 
-    async fn delete_instance(&self, id: InstanceId) -> Result<(), Self::Error> {
+    async fn delete_instance(&self, id: InstanceId) -> Result<Instance, Self::Error> {
         todo!()
     }
 
-    async fn list_instances(&self) -> Result<Vec<Instance>, Self::Error> {
+    async fn list_instances(&self, available_ids: &[InstanceId]) -> Result<Vec<Instance>, Self::Error> {
         todo!()
     }
 }
@@ -253,18 +253,18 @@ impl ConfigurationRepository for PostgresRepo {
         todo!()
     }
 
-    async fn delete_config(&self, id: ConfigurationId) -> Result<(), Self::Error> {
+    async fn delete_config(&self, id: ConfigurationId) -> Result<Configuration, Self::Error> {
         todo!()
     }
 
-    async fn list_configs(
+    async fn list_configs_by_instance(
         &self,
         instance_id: InstanceId,
     ) -> Result<Vec<Configuration>, Self::Error> {
         todo!()
     }
 
-    async fn list_all_configs(&self) -> Result<Vec<Configuration>, Self::Error> {
+    async fn list_all_configs(&self, available_ids: &[ConfigurationId]) -> Result<Vec<Configuration>, Self::Error> {
         todo!()
     }
 }
@@ -320,6 +320,10 @@ impl RightsRepository for PostgresRepo {
         // self.publish_rights().await
     }
 
+    async fn add_rights(&self, right_keys: &[RightKey<'static>], default_value: &[bool]) -> Result<(), Self::Error> {
+        todo!()
+    }
+
     async fn update_right(
         &self,
         right_key: RightKey<'static>,
@@ -373,6 +377,10 @@ impl RightsRepository for PostgresRepo {
         // }
         //
         // self.publish_rights().await
+    }
+
+    async fn remove_rights(&self, right_keys: &[RightKey<'static>]) -> Result<(), Self::Error> {
+        todo!()
     }
 }
 

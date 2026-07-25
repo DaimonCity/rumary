@@ -15,15 +15,17 @@ use axum_extra::extract::CookieJar;
 use axum_extra::extract::cookie::{Cookie, SameSite};
 // use rumary_dto::domain::api::RoleType;
 use rumary_dto::domain::api::{LoginOutcome, RightKey, RoleId, UpdateRole};
+use rumary_dto::domain::instance::InstanceId;
 use rumary_dto::domain::user::UserId;
 use rumary_dto::dto::api::request::{
-    DeleteMeRequest, InstancePathRequest, LoginRequest, RegisterRequest, TotpLoginRequest,
-    UpdateConfigurationRequest, UpdateInstanceResponse,
+    DeleteMeRequest, InstancePathRequest, LoginRequest, NewConfigurationRequest,
+    NewInstanceRequest, RegisterRequest, TotpLoginRequest, UpdateConfigurationRequest,
+    UpdateInstanceResponse,
 };
 use rumary_dto::dto::api::request::{NewRoleRequest, UpdateRoleRequest};
 use rumary_dto::dto::api::response::role::GetRoleResponse;
 use rumary_dto::dto::api::response::{
-    GetConfigurationResponse, GetInstanceResponse, InstancesResponse, SessionTokensResponse,
+    GetConfigurationResponse, GetInstanceResponse, SessionTokensResponse,
     TokenResponse,
 };
 use serde_json::json;
@@ -263,6 +265,7 @@ async fn delete_me(
 async fn create_instance(
     State(state): State<Arc<AppState>>,
     auth_user: AuthenticatedUser,
+    Json(payload): Json<NewInstanceRequest>,
 ) -> AppResult<http::StatusCode> {
     let user_id = auth_user.id;
 
@@ -272,7 +275,12 @@ async fn create_instance(
 
     if is_available {
         // action
-        todo!()
+        let instance = state.instance.create_instance(payload).await?;
+        let (k, v): (Vec<_>, Vec<_>) = instance.default_rights_setup().into_iter().unzip();
+
+        let role = state.role.write().await;
+        role.add_rights(&k, &v).await?;
+        return Ok(http::StatusCode::OK);
     }
     Err(AppError::Forbidden(format!(
         "{} has not the needed right",
@@ -305,13 +313,23 @@ async fn get_instance(
 async fn list_instance(
     State(state): State<Arc<AppState>>,
     auth_user: AuthenticatedUser,
-) -> AppResult<Json<InstancesResponse>> {
+) -> AppResult<Json<Vec<GetInstanceResponse>>> {
     let user_id = auth_user.id;
 
     // access checking
     let is_available = check_available(state.clone(), user_id, RightKey::LIST_INSTANCE_KEY).await?;
-    // action
-    todo!()
+    if is_available {
+        // action
+        let role = state.role.read().await;
+        let ids = role.instance_list(&auth_user.roles).await?;
+        let configs = state.instance.list_instances(&ids).await?;
+
+        return Ok(Json(configs));
+    }
+    Err(AppError::Forbidden(format!(
+        "{} has not the needed right",
+        user_id
+    )))
 }
 
 /// Handler для изменения информации о instance
@@ -351,8 +369,22 @@ async fn delete_instance(
         RightKey::delete_instance_key(instance_id.to_string().as_str()),
     )
     .await?;
-    // action
-    todo!()
+    if is_available {
+        // action
+        let instance = state
+            .instance
+            .delete_instance(InstanceId::from(instance_id))
+            .await?;
+        let (k, _): (Vec<_>, Vec<_>) = instance.default_rights_setup().into_iter().unzip();
+
+        let role = state.role.write().await;
+        role.remove_rights(&k).await?;
+        return Ok(http::StatusCode::OK);
+    }
+    Err(AppError::Forbidden(format!(
+        "{} has not the needed right",
+        user_id
+    )))
 }
 
 ///////////////////
@@ -366,14 +398,26 @@ async fn delete_instance(
 async fn create_configuration(
     State(state): State<Arc<AppState>>,
     auth_user: AuthenticatedUser,
+    Json(payload): Json<NewConfigurationRequest>,
 ) -> AppResult<http::StatusCode> {
     let user_id = auth_user.id;
 
     // access checking
     let is_available =
         check_available(state.clone(), user_id, RightKey::CREATE_CONFIGURATION_KEY).await?;
-    // action
-    todo!()
+    if is_available {
+        // action
+        let config = state.config.create_configuration(payload).await?;
+        let (k, v): (Vec<_>, Vec<_>) = config.default_rights_setup().into_iter().unzip();
+
+        let role = state.role.write().await;
+        role.add_rights(&k, &v).await?;
+        return Ok(http::StatusCode::OK);
+    }
+    Err(AppError::Forbidden(format!(
+        "{} has not the needed right",
+        user_id
+    )))
 }
 
 /// Handler для получения информации о configuration
@@ -401,14 +445,24 @@ async fn get_configuration(
 async fn list_configuration(
     State(state): State<Arc<AppState>>,
     auth_user: AuthenticatedUser,
-) -> AppResult<Json<GetConfigurationResponse>> {
+) -> AppResult<Json<Vec<GetConfigurationResponse>>> {
     let user_id = auth_user.id;
 
     // access checking
     let is_available =
         check_available(state.clone(), user_id, RightKey::LIST_CONFIGURATION_KEY).await?;
-    // action
-    todo!()
+    if is_available {
+        // action
+        let role = state.role.read().await;
+        let ids = role.configuration_list(&auth_user.roles).await?;
+        let configs = state.config.list_configs(&ids).await?;
+
+        return Ok(Json(configs));
+    }
+    Err(AppError::Forbidden(format!(
+        "{} has not the needed right",
+        user_id
+    )))
 }
 
 /// Handler для изменения информации о configuration
@@ -438,8 +492,7 @@ async fn delete_configuration(
     Path(config_id): Path<Uuid>,
     State(state): State<Arc<AppState>>,
     auth_user: AuthenticatedUser,
-    Json(payload): Json<UpdateConfigurationRequest>,
-) -> AppResult<Json<GetConfigurationResponse>> {
+) -> AppResult<http::StatusCode> {
     let user_id = auth_user.id;
 
     // access checking
@@ -449,8 +502,19 @@ async fn delete_configuration(
         RightKey::delete_configuration_key(config_id.to_string().as_str()),
     )
     .await?;
-    // action
-    todo!()
+    if is_available {
+        // action
+        let config = state.config.delete_configuration(config_id.into()).await?;
+        let (k, _): (Vec<_>, Vec<_>) = config.default_rights_setup().into_iter().unzip();
+
+        let role = state.role.write().await;
+        role.remove_rights(&k).await?;
+        return Ok(http::StatusCode::OK);
+    }
+    Err(AppError::Forbidden(format!(
+        "{} has not the needed right",
+        user_id
+    )))
 }
 
 /// Handler для скачивания файлов из определённой конфигурации
@@ -564,7 +628,10 @@ async fn create_role(
     // action
     if is_available {
         let mut role = state.role.write().await;
-        role.create_role(&payload.name).await?;
+        let rid = role.create_role(&payload.name).await?;
+        let (k, v): (Vec<_>, Vec<_>) = rid.default_rights_setup().into_iter().unzip();
+
+        role.add_rights(&k, &v).await?;
         return Ok(http::StatusCode::CREATED);
     }
 
@@ -666,10 +733,15 @@ async fn delete_role(
         RightKey::delete_role(role_id.to_string().as_str()),
     )
     .await?;
-    // action
+
     if is_available {
+        // action
         let mut role = state.role.write().await;
-        role.remove_role(RoleId::new(role_id))?;
+        let rid = RoleId::new(role_id);
+        role.remove_role(rid)?;
+        let (k, _): (Vec<_>, Vec<_>) = rid.default_rights_setup().into_iter().unzip();
+
+        role.remove_rights(&k).await?;
         return Ok(http::StatusCode::OK);
     }
     Err(AppError::Forbidden(format!(

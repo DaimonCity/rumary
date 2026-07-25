@@ -1,6 +1,7 @@
 use std::fmt::Display;
 use uuid::Uuid;
 
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct InstanceId(Uuid);
 
 impl From<Uuid> for InstanceId {

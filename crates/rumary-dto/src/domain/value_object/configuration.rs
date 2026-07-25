@@ -1,7 +1,7 @@
 use std::fmt::Display;
 use uuid::Uuid;
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialOrd, PartialEq, Eq, Hash)]
 pub struct ConfigurationId(Uuid);
 
 impl From<Uuid> for ConfigurationId {

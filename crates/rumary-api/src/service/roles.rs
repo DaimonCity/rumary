@@ -1,14 +1,20 @@
 #![allow(dead_code)]
+
 use crate::error::{AppError, AppResult};
 use crate::repo::repository::{RightsRepository, RolesRepository};
 use crate::service::right::Rights;
 use rumary_dto::domain::api::{NewRole, RightKey, Role, RoleError, RoleId, UpdateRoleDb};
+use rumary_dto::domain::configuration::ConfigurationId;
+use rumary_dto::domain::instance::InstanceId;
 use rumary_dto::dto::api::response::role::GetRoleResponse;
 use std::fmt::Display;
+use std::str::FromStr;
 use std::sync::Arc;
+use uuid::Uuid;
 
 pub struct RoleService {
     roles_repo: Arc<dyn RolesRepository<Error = AppError>>,
+    right_repo: Arc<dyn RightsRepository<Error = AppError>>,
     roles_ids: Vec<RoleId>,
     roles: Vec<Role>,
     rights: Rights,
@@ -26,7 +32,7 @@ impl RoleService {
         let roles = rows.into_iter().map(|r| r.into()).collect::<Vec<Role>>();
         let rights = right_repo.get_rights().await?;
 
-        let mut service = Self::init(roles_ids, roles, rights, roles_repo, channel);
+        let mut service = Self::init(roles_ids, roles, rights, roles_repo, right_repo, channel);
 
         match service.init_root().await {
             Ok(()) | Err(AppError::RoleError(RoleError::Exists(_))) => {}
@@ -41,10 +47,12 @@ impl RoleService {
         roles: Vec<Role>,
         rights: Rights,
         roles_repo: Arc<dyn RolesRepository<Error = AppError>>,
+        right_repo: Arc<dyn RightsRepository<Error = AppError>>,
         channel: tokio::sync::mpsc::Receiver<Rights>,
     ) -> Self {
         Self {
             roles_repo,
+            right_repo,
             channel: Some(channel),
             rights,
             roles_ids,
@@ -253,4 +261,84 @@ impl RoleService {
 
         self.rights = new_rights;
     }
+
+    pub async fn instance_list(&self, roles: &[RoleId]) -> AppResult<Vec<InstanceId>> {
+        self.list_from_rights::<InstanceId, Uuid>(roles).await
+    }
+    pub async fn configuration_list(&self, roles: &[RoleId]) -> AppResult<Vec<ConfigurationId>> {
+        self.list_from_rights::<ConfigurationId, Uuid>(roles).await
+    }
+
+    pub async fn role_list(&self, roles: &[RoleId]) -> AppResult<Vec<RoleId>> {
+        self.list_from_rights::<RoleId, usize>(roles).await
+    }
+
+    async fn list_from_rights<T, S>(&self, roles: &[RoleId]) -> AppResult<Vec<T>>
+    where
+        T: From<S> + std::cmp::PartialEq + EntityName,
+        S: FromStr,
+    {
+        let mut entiers: Vec<T> = Vec::new();
+        let part = T::ENTITY_NAME;
+
+        let instance_gets: Vec<RightKey<'static>> = self
+            .rights
+            .rights_keys()
+            .into_iter()
+            .filter(|k| k.as_str().contains(part) && k.as_str().contains("get"))
+            .collect();
+
+        for get_key in instance_gets {
+            let entier: T = S::from_str(get_key.as_str().split('.').collect::<Vec<&str>>()[1])
+                .map_err(|_err| AppError::Internal("Parsing error".to_string()))?
+                .into();
+            for role in roles {
+                if self.is_available_action(role, &get_key).await? && !entiers.contains(&entier) {
+                    entiers.push(entier);
+                    break;
+                }
+            }
+        }
+
+        Ok(entiers)
+    }
+
+    pub async fn add_right(
+        &self,
+        right_key: RightKey<'static>,
+        default_value: bool,
+    ) -> AppResult<()> {
+        self.right_repo.add_right(right_key, default_value).await
+    }
+
+    pub async fn add_rights(
+        &self,
+        right_keys: &[RightKey<'static>],
+        default_value: &[bool],
+    ) -> AppResult<()> {
+        self.right_repo.add_rights(right_keys, default_value).await
+    }
+
+    pub async fn remove_right(&self, right_key: RightKey<'static>) -> AppResult<()> {
+        self.right_repo.remove_right(right_key).await
+    }
+    pub async fn remove_rights(&self, right_key: &[RightKey<'static>]) -> AppResult<()> {
+        self.right_repo.remove_rights(right_key).await
+    }
+}
+
+pub trait EntityName {
+    const ENTITY_NAME: &'static str;
+}
+
+impl EntityName for InstanceId {
+    const ENTITY_NAME: &'static str = "instance";
+}
+
+impl EntityName for ConfigurationId {
+    const ENTITY_NAME: &'static str = "configuration";
+}
+
+impl EntityName for RoleId {
+    const ENTITY_NAME: &'static str = "role";
 }

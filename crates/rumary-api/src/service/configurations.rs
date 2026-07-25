@@ -3,7 +3,7 @@ use crate::repo::repository::ConfigurationRepository;
 use rumary_dto::domain::api::Configuration;
 use rumary_dto::domain::configuration::ConfigurationId;
 use rumary_dto::dto::api::request::{
-    ConfigurationsRequest, GetConfigurationRequest, NewConfigurationRequest,
+    GetConfigurationRequest, NewConfigurationRequest,
     UpdateConfigurationRequest,
 };
 use rumary_dto::dto::api::response::GetConfigurationResponse;
@@ -48,12 +48,13 @@ impl ConfigurationService {
         todo!()
     }
 
-    pub async fn list_configs(
-        &self,
-        request: ConfigurationsRequest,
-    ) -> AppResult<Vec<GetConfigurationResponse>> {
-        let instance_id = request.instance_id.into();
-        let _configs = self.configuration_repo.list_configs(instance_id).await?;
-        todo!()
+    /// configuration.method.list
+    pub async fn list_configs(&self, available_ids: &[ConfigurationId]) -> AppResult<Vec<GetConfigurationResponse>> {
+        let instances = self.configuration_repo.list_all_configs(available_ids).await?;
+        Ok(instances.into_iter().map(Into::into).collect())
+    }
+    
+    pub async fn delete_configuration(&self, configuration_id: ConfigurationId) -> AppResult<Configuration> {
+        self.configuration_repo.delete_config(configuration_id).await
     }
 }

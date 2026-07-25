@@ -12,6 +12,16 @@ pub struct RightId(usize);
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Ord, PartialOrd)]
 pub struct RoleId(usize);
 
+impl RoleId {
+    pub fn default_rights_setup(&self) -> Vec<(RightKey<'static>, bool)> {
+        let id_str = self.0.to_string();
+        vec![
+            (RightKey::get_role(&id_str), false),
+            (RightKey::update_role(&id_str), false),
+            (RightKey::delete_role(&id_str), false),
+        ]
+    }
+}
 #[derive(Debug)]
 pub enum RoleError {
     NotFound(String),
@@ -21,6 +31,12 @@ pub enum RoleError {
 impl From<RoleId> for usize {
     fn from(id: RoleId) -> Self {
         id.0
+    }
+}
+
+impl From<usize> for RoleId {
+    fn from(value: usize) -> Self {
+        RoleId(value)
     }
 }
 
@@ -154,8 +170,9 @@ impl<'a> Display for RightKey<'a> {
 }
 
 impl RightId {
+    const START: RightId = Self(0);
     pub fn start() -> Self {
-        Self(0)
+        Self::START
     }
     pub fn new(id: usize) -> Self {
         Self(id)

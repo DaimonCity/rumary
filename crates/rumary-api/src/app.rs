@@ -18,6 +18,8 @@ use crate::state::AppState;
 use sqlx::migrate::Migrator;
 use std::sync::Arc;
 use tokio::sync::RwLock;
+use crate::service::configurations::ConfigurationService;
+use crate::service::instances::InstanceService;
 
 pub struct Application {
     config: Arc<Config>,
@@ -139,9 +141,14 @@ impl Application {
             RoleService::new(repositories.roles_repo, repositories.rights_repo, rx).await?,
         ));
 
+        let config_service = Arc::new(ConfigurationService::new(repositories.configuration_repo));
+        let instance_service = Arc::new(InstanceService::new(repositories.instance_repo));
+
         let state = AppState {
             auth,
             user_profile,
+            config: config_service,
+            instance: instance_service,
             file,
             totp,
             role,

@@ -70,6 +70,10 @@ impl RightsRepository for LocalRightsRepo {
         self.write_and_publish(rights).await
     }
 
+    async fn add_rights(&self, right_keys: &[RightKey<'static>], default_value: &[bool]) -> Result<(), Self::Error> {
+        todo!()
+    }
+
     async fn update_right(
         &self,
         right_key: RightKey<'static>,
@@ -102,5 +106,9 @@ impl RightsRepository for LocalRightsRepo {
         definition.active = false;
 
         self.write_and_publish(rights).await
+    }
+
+    async fn remove_rights(&self, right_keys: &[RightKey<'static>]) -> Result<(), Self::Error> {
+        todo!()
     }
 }
