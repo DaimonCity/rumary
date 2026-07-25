@@ -12,6 +12,12 @@ impl TokenId {
     }
 }
 
+impl From<TokenId> for Uuid {
+    fn from(id: TokenId) -> Self {
+        id.0
+    }
+}
+
 impl From<Uuid> for TokenId {
     fn from(uuid: Uuid) -> Self {
         Self(uuid)

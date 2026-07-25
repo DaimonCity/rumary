@@ -35,12 +35,11 @@ pub struct Instance {
 
 impl Instance {
     /// Возвращает базовые права, связанные с этим инстансом, и их статус по умолчанию
-    pub fn default_rights_setup(&self) -> Vec<(RightKey<'static>, bool)> {
-        let id_str = self.id.to_string();
+    pub fn default_rights_setup(id: &InstanceId) -> Vec<(RightKey<'static>, bool)> {
         vec![
-            (RightKey::get_instance_key(&id_str), false),
-            (RightKey::update_instance_key(&id_str), false),
-            (RightKey::delete_instance_key(&id_str), false),
+            (RightKey::get_instance_key(id), false),
+            (RightKey::update_instance_key(id), false),
+            (RightKey::delete_instance_key(id), false),
         ]
     }
 }

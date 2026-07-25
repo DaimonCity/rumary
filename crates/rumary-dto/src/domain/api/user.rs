@@ -1,4 +1,4 @@
-use crate::domain::api::{AccessLevel, RoleId};
+use crate::domain::api::{AccessLevel, RightKey, RoleId};
 use crate::domain::auth::tokens::{TokenHash, TokenId};
 use crate::domain::user::{Login, Nickname, PasswordHash, UserId};
 use chrono::{DateTime, Utc};
@@ -13,6 +13,16 @@ pub struct User {
     pub access_level: AccessLevel,
     pub roles: Vec<RoleId>,
     pub ban: Ban,
+}
+
+impl User {
+    pub fn default_rights_setup(id: &UserId) -> Vec<(RightKey<'static>, bool)> {
+        vec![
+            (RightKey::get_me_key(id), false),
+            (RightKey::update_me_key(id), false),
+            (RightKey::delete_me_key(id), false),
+        ]
+    }
 }
 
 pub struct UserSession {

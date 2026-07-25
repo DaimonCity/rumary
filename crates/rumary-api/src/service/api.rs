@@ -14,7 +14,8 @@ use axum::{
 use axum_extra::extract::CookieJar;
 use axum_extra::extract::cookie::{Cookie, SameSite};
 // use rumary_dto::domain::api::RoleType;
-use rumary_dto::domain::api::{LoginOutcome, RightKey, RoleId, UpdateRole};
+use rumary_dto::domain::api::{Configuration, Instance, LoginOutcome, RightKey, Role, RoleId, UpdateRole, User};
+use rumary_dto::domain::configuration::ConfigurationId;
 use rumary_dto::domain::instance::InstanceId;
 use rumary_dto::domain::user::UserId;
 use rumary_dto::dto::api::request::{
@@ -25,8 +26,7 @@ use rumary_dto::dto::api::request::{
 use rumary_dto::dto::api::request::{NewRoleRequest, UpdateRoleRequest};
 use rumary_dto::dto::api::response::role::GetRoleResponse;
 use rumary_dto::dto::api::response::{
-    GetConfigurationResponse, GetInstanceResponse, SessionTokensResponse,
-    TokenResponse,
+    GetConfigurationResponse, GetInstanceResponse, SessionTokensResponse, TokenResponse,
 };
 use serde_json::json;
 use std::path::PathBuf;
@@ -93,6 +93,14 @@ async fn register(
     Json(payload): Json<RegisterRequest>,
 ) -> AppResult<(CookieJar, Json<TokenResponse>)> {
     let tokens = state.auth.register(payload).await?;
+    let auth_user = state
+        .auth
+        .authenticate_access_token(&tokens.access_token)
+        .await?;
+    let role = state.role.read().await;
+    let (k, v): (Vec<_>, Vec<_>) = User::default_rights_setup(&auth_user.id).into_iter().unzip();
+
+    role.add_rights(&k, &v).await?;
     Ok((
         with_session_cookies(jar, &state, &tokens),
         Json(TokenResponse {
@@ -208,9 +216,9 @@ async fn get_me(
     let is_available = check_available(
         state.clone(),
         user_id,
-        RightKey::get_me_key(user_id.to_string().as_str()),
+        RightKey::get_me_key(&user_id),
     )
-    .await?;
+        .await?;
 
     if is_available {
         // action
@@ -238,13 +246,17 @@ async fn delete_me(
     let is_available = check_available(
         state.clone(),
         user_id,
-        RightKey::delete_me_key(user_id.to_string().as_str()),
+        RightKey::delete_me_key(&user_id),
     )
-    .await?;
+        .await?;
 
     if is_available {
         // action
         state.user_profile.delete_me(auth_user.id, payload).await?;
+        let role = state.role.read().await;
+        let (k, _): (Vec<_>, Vec<_>) = User::default_rights_setup(&auth_user.id).into_iter().unzip();
+
+        role.remove_rights(&k).await?;
         return Ok(clear_session_cookies(jar, &state));
     }
 
@@ -275,8 +287,8 @@ async fn create_instance(
 
     if is_available {
         // action
-        let instance = state.instance.create_instance(payload).await?;
-        let (k, v): (Vec<_>, Vec<_>) = instance.default_rights_setup().into_iter().unzip();
+        let instance_id = &state.instance.create_instance(payload).await?.id;
+        let (k, v): (Vec<_>, Vec<_>) = Instance::default_rights_setup(instance_id).into_iter().unzip();
 
         let role = state.role.write().await;
         role.add_rights(&k, &v).await?;
@@ -296,14 +308,14 @@ async fn get_instance(
     auth_user: AuthenticatedUser,
 ) -> AppResult<Json<GetInstanceResponse>> {
     let user_id = auth_user.id;
-
+    let instance_id = &InstanceId::from(instance_id);
     // access checking
     let is_available = check_available(
         state.clone(),
         user_id,
-        RightKey::get_instance_key(instance_id.to_string().as_str()),
+        RightKey::get_instance_key(instance_id),
     )
-    .await?;
+        .await?;
     // action
     todo!()
 }
@@ -341,14 +353,14 @@ async fn update_instance(
     Json(payload): Json<UpdateInstanceResponse>,
 ) -> AppResult<Json<GetInstanceResponse>> {
     let user_id = auth_user.id;
-
+    let instance_id = &InstanceId::from(instance_id);
     // access checking
     let is_available = check_available(
         state.clone(),
         user_id,
-        RightKey::update_instance_key(instance_id.to_string().as_str()),
+        RightKey::update_instance_key(instance_id),
     )
-    .await?;
+        .await?;
     // action
     todo!()
 }
@@ -361,21 +373,21 @@ async fn delete_instance(
     auth_user: AuthenticatedUser,
 ) -> AppResult<http::StatusCode> {
     let user_id = auth_user.id;
-
+    let instance_id = InstanceId::from(instance_id);
     // access checking
     let is_available = check_available(
         state.clone(),
         user_id,
-        RightKey::delete_instance_key(instance_id.to_string().as_str()),
+        RightKey::delete_instance_key(&instance_id),
     )
-    .await?;
+        .await?;
     if is_available {
         // action
         let instance = state
             .instance
-            .delete_instance(InstanceId::from(instance_id))
+            .delete_instance(instance_id)
             .await?;
-        let (k, _): (Vec<_>, Vec<_>) = instance.default_rights_setup().into_iter().unzip();
+        let (k, _): (Vec<_>, Vec<_>) = Instance::default_rights_setup(&instance.id).into_iter().unzip();
 
         let role = state.role.write().await;
         role.remove_rights(&k).await?;
@@ -407,8 +419,8 @@ async fn create_configuration(
         check_available(state.clone(), user_id, RightKey::CREATE_CONFIGURATION_KEY).await?;
     if is_available {
         // action
-        let config = state.config.create_configuration(payload).await?;
-        let (k, v): (Vec<_>, Vec<_>) = config.default_rights_setup().into_iter().unzip();
+        let config_id = &state.config.create_configuration(payload).await?.id;
+        let (k, v): (Vec<_>, Vec<_>) = Configuration::default_rights_setup(config_id).into_iter().unzip();
 
         let role = state.role.write().await;
         role.add_rights(&k, &v).await?;
@@ -428,16 +440,23 @@ async fn get_configuration(
     auth_user: AuthenticatedUser,
 ) -> AppResult<Json<GetConfigurationResponse>> {
     let user_id = auth_user.id;
-
+    let config_id = ConfigurationId::from(config_id);
     // access checking
     let is_available = check_available(
         state.clone(),
         user_id,
-        RightKey::get_configuration_key(config_id.to_string().as_str()),
+        RightKey::get_configuration_key(&config_id),
     )
-    .await?;
-    // action
-    todo!()
+        .await?;
+    if is_available {
+        // action
+        let config = state.config.get_config(config_id).await?;
+        return Ok(Json(config));
+    }
+    Err(AppError::Forbidden(format!(
+        "{} has not the needed right",
+        user_id
+    )))
 }
 
 /// Handler для получения информации о configurations, доступных по праву get
@@ -474,14 +493,14 @@ async fn update_configuration(
     Json(payload): Json<UpdateConfigurationRequest>,
 ) -> AppResult<Json<GetConfigurationResponse>> {
     let user_id = auth_user.id;
-
+    let config_id = ConfigurationId::from(config_id);
     // access checking
     let is_available = check_available(
         state.clone(),
         user_id,
-        RightKey::update_configuration_key(config_id.to_string().as_str()),
+        RightKey::update_configuration_key(&config_id),
     )
-    .await?;
+        .await?;
     // action
     todo!()
 }
@@ -494,18 +513,17 @@ async fn delete_configuration(
     auth_user: AuthenticatedUser,
 ) -> AppResult<http::StatusCode> {
     let user_id = auth_user.id;
-
+    let config_id = ConfigurationId::from(config_id);
     // access checking
     let is_available = check_available(
         state.clone(),
         user_id,
-        RightKey::delete_configuration_key(config_id.to_string().as_str()),
+        RightKey::delete_configuration_key(&config_id),
     )
-    .await?;
+        .await?;
     if is_available {
         // action
-        let config = state.config.delete_configuration(config_id.into()).await?;
-        let (k, _): (Vec<_>, Vec<_>) = config.default_rights_setup().into_iter().unzip();
+        let (k, _): (Vec<_>, Vec<_>) = Configuration::default_rights_setup(&config_id).into_iter().unzip();
 
         let role = state.role.write().await;
         role.remove_rights(&k).await?;
@@ -526,14 +544,14 @@ async fn download_file_handler(
     auth_user: AuthenticatedUser,
 ) -> AppResult<http::Response<Body>> {
     let user_id = auth_user.id;
-
+    let config_id = ConfigurationId::from(config_id);
     // access checking
     let is_available = check_available(
         state.clone(),
         user_id,
-        RightKey::download_configuration_key(config_id.to_string().as_str()),
+        RightKey::download_configuration_key(&config_id),
     )
-    .await?;
+        .await?;
     // action
     if is_available {
         return state
@@ -568,7 +586,7 @@ async fn set_instance_path(
         user_id,
         RightKey::SETTINGS_INSTANCE_PATH_SET_KEY,
     )
-    .await?;
+        .await?;
 
     if is_available {
         state.settings.add_instance_path(&request.path).await?;
@@ -595,7 +613,7 @@ async fn remove_instance_path(
         user_id,
         RightKey::SETTINGS_INSTANCE_PATH_REMOVE_KEY,
     )
-    .await?;
+        .await?;
 
     if is_available {
         state.settings.remove_instance_path().await?;
@@ -628,8 +646,8 @@ async fn create_role(
     // action
     if is_available {
         let mut role = state.role.write().await;
-        let rid = role.create_role(&payload.name).await?;
-        let (k, v): (Vec<_>, Vec<_>) = rid.default_rights_setup().into_iter().unzip();
+        let rid = &role.create_role(&payload.name).await?;
+        let (k, v): (Vec<_>, Vec<_>) = Role::default_rights_setup(rid).into_iter().unzip();
 
         role.add_rights(&k, &v).await?;
         return Ok(http::StatusCode::CREATED);
@@ -648,25 +666,25 @@ async fn update_role(
     Json(payload): Json<UpdateRoleRequest>,
 ) -> AppResult<http::StatusCode> {
     let user_id = auth_user.id;
-
+    let role_id = RoleId::from(role_id);
     // access checking
     let is_available = check_available(
         state.clone(),
         user_id,
-        RightKey::update_role(role_id.to_string().as_str()),
+        RightKey::update_role(&role_id),
     )
-    .await?;
+        .await?;
 
     // action
     if is_available {
         let mut role = state.role.write().await;
         let update: UpdateRole = payload.into();
         role.update_role(
-            RoleId::new(role_id),
+            role_id,
             &update.allow_keys,
             &update.remove_keys,
         )
-        .await?;
+            .await?;
         return Ok(http::StatusCode::OK);
     }
 
@@ -682,18 +700,18 @@ async fn get_role(
     auth_user: AuthenticatedUser,
 ) -> AppResult<Json<GetRoleResponse>> {
     let user_id = auth_user.id;
-
+    let role_id = RoleId::from(role_id);
     // access checking
     let is_available = check_available(
         state.clone(),
         user_id,
-        RightKey::get_role(role_id.to_string().as_str()),
+        RightKey::get_role(&role_id),
     )
-    .await?;
+        .await?;
     // action
     if is_available {
         let role = state.role.read().await;
-        return Ok(Json(role.get_role_info(RoleId::new(role_id))?));
+        return Ok(Json(role.get_role_info(role_id)?));
     }
     Err(AppError::Forbidden(format!(
         "{} has not the needed right",
@@ -725,21 +743,20 @@ async fn delete_role(
     auth_user: AuthenticatedUser,
 ) -> AppResult<http::StatusCode> {
     let user_id = auth_user.id;
-
+    let role_id = RoleId::from(role_id);
     // access checking
     let is_available = check_available(
         state.clone(),
         user_id,
-        RightKey::delete_role(role_id.to_string().as_str()),
+        RightKey::delete_role(&role_id),
     )
-    .await?;
+        .await?;
 
     if is_available {
         // action
         let mut role = state.role.write().await;
-        let rid = RoleId::new(role_id);
-        role.remove_role(rid)?;
-        let (k, _): (Vec<_>, Vec<_>) = rid.default_rights_setup().into_iter().unzip();
+        role.remove_role(role_id)?;
+        let (k, _): (Vec<_>, Vec<_>) = Role::default_rights_setup(&role_id).into_iter().unzip();
 
         role.remove_rights(&k).await?;
         return Ok(http::StatusCode::OK);

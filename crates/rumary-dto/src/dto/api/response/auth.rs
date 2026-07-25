@@ -30,7 +30,7 @@ pub struct TotpRequiredResponse {
 pub struct SessionTokensResponse {
     pub access_token: String,
     pub refresh_token: String,
-    pub refresh_token_id: String,
+    pub refresh_token_id: Uuid,
 }
 
 #[derive(Clone, Debug, Serialize, PartialEq, Eq)]

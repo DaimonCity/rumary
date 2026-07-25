@@ -4,6 +4,9 @@ use std::borrow::Cow;
 use std::collections::HashMap;
 use std::fmt::Display;
 use std::ops::{Deref, DerefMut};
+use crate::domain::configuration::ConfigurationId;
+use crate::domain::instance::InstanceId;
+use crate::domain::user::UserId;
 
 type RoleResult<T> = Result<T, RoleError>;
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Ord, PartialOrd, Serialize, Deserialize)]
@@ -12,13 +15,12 @@ pub struct RightId(usize);
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Ord, PartialOrd)]
 pub struct RoleId(usize);
 
-impl RoleId {
-    pub fn default_rights_setup(&self) -> Vec<(RightKey<'static>, bool)> {
-        let id_str = self.0.to_string();
+impl Role {
+    pub fn default_rights_setup(id: &RoleId) -> Vec<(RightKey<'static>, bool)> {
         vec![
-            (RightKey::get_role(&id_str), false),
-            (RightKey::update_role(&id_str), false),
-            (RightKey::delete_role(&id_str), false),
+            (RightKey::get_role(id), false),
+            (RightKey::update_role(id), false),
+            (RightKey::delete_role(id), false),
         ]
     }
 }
@@ -70,6 +72,7 @@ impl<'a> RightKey<'a> {
 
     // Внутренние схемы для динамических ключей
     const GET_ME_SCHEMA: &'static str = "profile.{user_id}.get";
+    const UPDATE_ME_SCHEMA: &'static str = "profile.{user_id}.update";
     const DELETE_ME_SCHEMA: &'static str = "profile.{user_id}.delete";
 
     const GET_INSTANCE_SCHEMA: &'static str = "instance.{instance_id}.get";
@@ -87,63 +90,68 @@ impl<'a> RightKey<'a> {
 
     // 2. ДИНАМИЧЕСКИЕ КЛЮЧИ (генерируются в рантайме)
     // Передаем параметры, чтобы сразу формировать правильный ключ
-    pub fn get_me_key(user_id: &str) -> Self {
-        let key = Self::GET_ME_SCHEMA.replace("{user_id}", user_id);
+    pub fn get_me_key(user_id: &UserId) -> Self {
+        let key = Self::GET_ME_SCHEMA.replace("{user_id}", user_id.to_string().as_str());
         Self(Cow::Owned(key)) // Используем Owned, так как строка создана в рантайме
     }
 
-    pub fn delete_me_key(user_id: &str) -> Self {
-        let key = Self::DELETE_ME_SCHEMA.replace("{user_id}", user_id);
+    pub fn update_me_key(user_id: &UserId) -> Self {
+        let key = Self::UPDATE_ME_SCHEMA.replace("{user_id}", user_id.to_string().as_str());
         Self(Cow::Owned(key)) // Используем Owned, так как строка создана в рантайме
     }
 
-    pub fn get_instance_key(instance_id: &str) -> Self {
-        let key = Self::GET_INSTANCE_SCHEMA.replace("{instance_id}", instance_id);
+    pub fn delete_me_key(user_id: &UserId) -> Self {
+        let key = Self::DELETE_ME_SCHEMA.replace("{user_id}", user_id.to_string().as_str());
+        Self(Cow::Owned(key)) // Используем Owned, так как строка создана в рантайме
+    }
+
+    pub fn get_instance_key(instance_id: &InstanceId) -> Self {
+        let key = Self::GET_INSTANCE_SCHEMA.replace("{instance_id}", instance_id.to_string().as_str());
         Self(Cow::Owned(key))
     }
 
-    pub fn update_instance_key(instance_id: &str) -> Self {
-        let key = Self::UPDATE_INSTANCE_SCHEMA.replace("{instance_id}", instance_id);
+    pub fn update_instance_key(instance_id: &InstanceId) -> Self {
+        let key = Self::UPDATE_INSTANCE_SCHEMA.replace("{instance_id}", instance_id.to_string().as_str());
         Self(Cow::Owned(key))
     }
     
-    pub fn delete_instance_key(instance_id: &str) -> Self {
-        let key = Self::DELETE_INSTANCE_SCHEMA.replace("{instance_id}", instance_id);
+    pub fn delete_instance_key(instance_id: &InstanceId) -> Self {
+        let key = Self::DELETE_INSTANCE_SCHEMA.replace("{instance_id}", instance_id.to_string().as_str());
         Self(Cow::Owned(key))
     }
     
-    pub fn get_configuration_key(configuration_id: &str) -> Self {
-        let key = Self::GET_CONFIGURATION_SCHEMA.replace("{configuration_id}", configuration_id);
+    pub fn get_configuration_key(configuration_id: &ConfigurationId) -> Self {
+        let key = Self::GET_CONFIGURATION_SCHEMA.replace("{configuration_id}", configuration_id.to_string().as_str());
         Self(Cow::Owned(key))
     }
     
-    pub fn update_configuration_key(configuration_id: &str) -> Self {
-        let key = Self::UPDATE_CONFIGURATION_SCHEMA.replace("{configuration_id}", configuration_id);
+    pub fn update_configuration_key(configuration_id: &ConfigurationId) -> Self {
+        let key = Self::UPDATE_CONFIGURATION_SCHEMA.replace("{configuration_id}", configuration_id.to_string().as_str());
         Self(Cow::Owned(key))
     }
     
-    pub fn delete_configuration_key(configuration_id: &str) -> Self {
-        let key = Self::DELETE_CONFIGURATION_SCHEMA.replace("{configuration_id}", configuration_id);
+    pub fn delete_configuration_key(configuration_id: &ConfigurationId) -> Self {
+        let key = Self::DELETE_CONFIGURATION_SCHEMA.replace("{configuration_id}", configuration_id.to_string().as_str());
         Self(Cow::Owned(key))
     }
     
-    pub fn download_configuration_key(configuration_id: &str) -> Self {
-        let key = Self::DOWNLOAD_CONFIGURATION_SCHEMA.replace("{configuration_id}", configuration_id); 
+    pub fn download_configuration_key(configuration_id: &ConfigurationId) -> Self {
+        let key = Self::DOWNLOAD_CONFIGURATION_SCHEMA.replace("{configuration_id}", configuration_id.to_string().as_str()); 
         Self(Cow::Owned(key))
     }
     
-    pub fn get_role(role_id: &str) -> Self {
-        let key = Self::GET_ROLE_SCHEMA.replace("{role_id}", role_id);
+    pub fn get_role(role_id: &RoleId) -> Self {
+        let key = Self::GET_ROLE_SCHEMA.replace("{role_id}", role_id.to_string().as_str()); 
         Self(Cow::Owned(key))
     }
     
-    pub fn update_role(role_id: &str) -> Self {
-        let key = Self::UPDATE_ROLE_SCHEMA.replace("{role_id}", role_id);
+    pub fn update_role(role_id: &RoleId) -> Self {
+        let key = Self::UPDATE_ROLE_SCHEMA.replace("{role_id}", role_id.to_string().as_str()); 
         Self(Cow::Owned(key))
     }
     
-    pub fn delete_role(role_id: &str) -> Self {
-        let key = Self::DELETE_ROLE_SCHEMA.replace("{role_id}", role_id);
+    pub fn delete_role(role_id: &RoleId) -> Self {
+        let key = Self::DELETE_ROLE_SCHEMA.replace("{role_id}", role_id.to_string().as_str()); 
         Self(Cow::Owned(key))
     }    
     

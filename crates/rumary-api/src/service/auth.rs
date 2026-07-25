@@ -72,7 +72,7 @@ impl AuthService {
         Ok(SessionTokensResponse {
             access_token: self.encode_access_token(&refreshed_user)?,
             refresh_token,
-            refresh_token_id: refresh_token_id.to_string(),
+            refresh_token_id: refresh_token_id.into(),
         })
     }
 

@@ -3,7 +3,7 @@ use crate::repo::repository::ConfigurationRepository;
 use rumary_dto::domain::api::Configuration;
 use rumary_dto::domain::configuration::ConfigurationId;
 use rumary_dto::dto::api::request::{
-    GetConfigurationRequest, NewConfigurationRequest,
+    NewConfigurationRequest,
     UpdateConfigurationRequest,
 };
 use rumary_dto::dto::api::response::GetConfigurationResponse;
@@ -41,10 +41,9 @@ impl ConfigurationService {
 
     pub async fn get_config(
         &self,
-        request: GetConfigurationRequest,
+        config_id: ConfigurationId,
     ) -> AppResult<GetConfigurationResponse> {
-        let configuration_id = request.configuration_id.into();
-        let _config = self.configuration_repo.get_config(configuration_id).await?;
+        let _config = self.configuration_repo.get_config(config_id).await?;
         todo!()
     }
 

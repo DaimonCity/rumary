@@ -3,15 +3,15 @@ use crate::repo::repository::{TotpRepository, UserRepository};
 use crate::services::UserProfileProvider;
 use async_trait::async_trait;
 use bcrypt::verify;
+use rumary_dto::domain::api::{RoleId, User};
 use rumary_dto::domain::user::UserId;
 use rumary_dto::dto::api::request::DeleteMeRequest;
 use serde::Serialize;
 use std::sync::Arc;
-use rumary_dto::domain::api::{RoleId, User};
 
 pub struct UserProfileService {
-    user_repo: Arc<dyn UserRepository<Error=AppError>>,
-    totp_repo: Arc<dyn TotpRepository<Error=AppError>>,
+    user_repo: Arc<dyn UserRepository<Error = AppError>>,
+    totp_repo: Arc<dyn TotpRepository<Error = AppError>>,
 }
 
 #[derive(Debug, Serialize)]
@@ -23,8 +23,8 @@ pub struct ProfileResponse {
 
 impl UserProfileService {
     pub(crate) fn new(
-        user_repo: Arc<dyn UserRepository<Error=AppError>>,
-        totp_repo: Arc<dyn TotpRepository<Error=AppError>>,
+        user_repo: Arc<dyn UserRepository<Error = AppError>>,
+        totp_repo: Arc<dyn TotpRepository<Error = AppError>>,
     ) -> Self {
         Self {
             user_repo,
@@ -33,13 +33,12 @@ impl UserProfileService {
     }
 
     async fn get_user(&self, user_id: UserId) -> Result<User, AppError> {
-        Ok(self
-            .user_repo
+        self.user_repo
             .find_user(user_id)
             .await?
             .ok_or(AppError::NotFound(
                 "UserProfileService: User not found".to_owned(),
-            ))?)
+            ))
     }
 }
 

@@ -11,6 +11,7 @@ use std::fmt::Display;
 use std::str::FromStr;
 use std::sync::Arc;
 use uuid::Uuid;
+use rumary_dto::domain::user::UserId;
 
 pub struct RoleService {
     roles_repo: Arc<dyn RolesRepository<Error = AppError>>,
@@ -273,6 +274,10 @@ impl RoleService {
         self.list_from_rights::<RoleId, usize>(roles).await
     }
 
+    pub async fn user_list(&self, roles: &[RoleId]) -> AppResult<Vec<UserId>> {
+        self.list_from_rights::<UserId, Uuid>(roles).await
+    }
+
     async fn list_from_rights<T, S>(&self, roles: &[RoleId]) -> AppResult<Vec<T>>
     where
         T: From<S> + std::cmp::PartialEq + EntityName,
@@ -341,4 +346,8 @@ impl EntityName for ConfigurationId {
 
 impl EntityName for RoleId {
     const ENTITY_NAME: &'static str = "role";
+}
+
+impl EntityName for UserId {
+    const ENTITY_NAME: &'static str = "profile";
 }
