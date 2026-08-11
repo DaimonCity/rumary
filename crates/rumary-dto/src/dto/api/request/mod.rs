@@ -2,6 +2,8 @@ mod auth;
 mod configuration;
 mod instance;
 mod settings;
-mod role;
+mod group;
+mod moderation;
+pub mod share_target;
 
-pub use {auth::*, configuration::*, instance::*, settings::*, role::*};
+pub use {auth::*, configuration::*, instance::*, settings::*, group::*, moderation::*};

@@ -1,12 +1,8 @@
 use crate::error::{AppError, AppResult};
 use crate::repo::repository::ConfigurationRepository;
-use rumary_dto::domain::api::Configuration;
-use rumary_dto::domain::configuration::ConfigurationId;
-use rumary_dto::dto::api::request::{
-    NewConfigurationRequest,
-    UpdateConfigurationRequest,
-};
-use rumary_dto::dto::api::response::GetConfigurationResponse;
+use rumary_dto::domain::api::value_object::configuration::ConfigurationId;
+use rumary_dto::domain::api::value_object::instance::InstanceId;
+use rumary_dto::domain::api::{Configuration, NewConfiguration, UpdateConfiguration};
 use std::sync::Arc;
 
 pub struct ConfigurationService {
@@ -20,40 +16,41 @@ impl ConfigurationService {
         Self { configuration_repo }
     }
 
-    pub async fn create_configuration(
-        &self,
-        request: NewConfigurationRequest,
-    ) -> AppResult<Configuration> {
+    pub async fn create(&self, new_config: NewConfiguration) -> AppResult<Configuration> {
         self.configuration_repo
-            .create_config(request.try_into()?)
+            .create_config(new_config)
             .await
     }
 
-    pub async fn update_configuration(
+    pub async fn update(
         &self,
         configuration_id: ConfigurationId,
-        request: UpdateConfigurationRequest,
+        update_config: UpdateConfiguration,
     ) -> AppResult<Configuration> {
         self.configuration_repo
-            .update_config(configuration_id, request.try_into()?)
+            .update_config(configuration_id, update_config)
             .await
     }
 
-    pub async fn get_config(
-        &self,
-        config_id: ConfigurationId,
-    ) -> AppResult<GetConfigurationResponse> {
-        let _config = self.configuration_repo.get_config(config_id).await?;
-        todo!()
+    pub async fn get(&self, config_id: ConfigurationId) -> AppResult<Configuration> {
+        self.configuration_repo.get_config(config_id).await
     }
 
-    /// configuration.method.list
-    pub async fn list_configs(&self, available_ids: &[ConfigurationId]) -> AppResult<Vec<GetConfigurationResponse>> {
-        let instances = self.configuration_repo.list_all_configs(available_ids).await?;
-        Ok(instances.into_iter().map(Into::into).collect())
+    pub async fn list(&self) -> AppResult<Vec<Configuration>> {
+        let instances = self.configuration_repo.list_all_configs().await?;
+        Ok(instances)
     }
-    
-    pub async fn delete_configuration(&self, configuration_id: ConfigurationId) -> AppResult<Configuration> {
-        self.configuration_repo.delete_config(configuration_id).await
+    pub async fn list_for_instance(&self, instance_id: InstanceId) -> AppResult<Vec<Configuration>> {
+        let instances = self.configuration_repo.list_for_instance(instance_id).await?;
+        Ok(instances)
+    }
+
+    pub async fn delete(
+        &self,
+        configuration_id: ConfigurationId,
+    ) -> AppResult<Configuration> {
+        self.configuration_repo
+            .delete_config(configuration_id)
+            .await
     }
 }

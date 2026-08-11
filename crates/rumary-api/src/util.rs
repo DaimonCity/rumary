@@ -1,5 +1,15 @@
 use std::net::{IpAddr, Ipv4Addr};
 use std::str::FromStr;
+use std::sync::OnceLock;
+
+pub fn check_first_time() -> bool {
+    static INIT: OnceLock<()> = OnceLock::new();
+    // get_or_init возвращает ссылку на значение, если оно уже было, вернем false
+    INIT.get().is_none() && {
+        INIT.set(()).ok();
+        true
+    }
+}
 
 async fn get_server_ip4() -> Result<Ipv4Addr, Box<dyn std::error::Error>> {
     let ip_str = reqwest::get("https://api.ipify.org").await?.text().await?;

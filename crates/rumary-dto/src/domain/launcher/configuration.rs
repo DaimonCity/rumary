@@ -1,4 +1,4 @@
-use crate::domain::download_url::DownloadUrl;
+use crate::domain::launcher::value_object::download_url::DownloadUrl;
 use crate::domain::launcher::CheckDirs;
 use std::fmt::Debug;
 use uuid::Uuid;

@@ -1,21 +1,26 @@
-use crate::service::right::Rights;
 use axum::{
     Json,
     http::StatusCode,
     response::{IntoResponse, Response},
 };
-use rumary_dto::domain::api::{LoaderError, RoleError};
-use rumary_dto::domain::auth::errors::ExpirationTimeError;
-use rumary_dto::domain::error::ValueObjectError;
-use rumary_dto::domain::name::{DescriptionError, DirectoryNameError, DisplayNameError};
-use rumary_dto::domain::url::IconUrlError;
-use rumary_dto::domain::user::{HashError, LoginError, NicknameError};
-use rumary_dto::domain::version::VersionError;
+use rumary_dto::domain::api::LoaderError;
+use rumary_dto::domain::api::share_target::ShareTargetError;
+use rumary_dto::domain::api::value_object::auth::errors::ExpirationTimeError;
+use rumary_dto::domain::api::value_object::error::ValueObjectError;
+use rumary_dto::domain::api::value_object::name::{
+    DescriptionError, DirectoryNameError, DisplayNameError,
+};
+use rumary_dto::domain::api::value_object::url::IconUrlError;
+use rumary_dto::domain::api::value_object::user::{HashError, LoginError, NicknameError};
+use rumary_dto::domain::api::value_object::version::VersionError;
+use rumary_dto::domain::perms::value_object::error::PermsValueObjectError;
+use rumary_dto::domain::perms::value_object::group::{GroupNameError, GroupWeightError};
+use rumary_dto::domain::perms::value_object::resource::ResourceTypeError;
 use rumary_dto::err_from;
+use rumary_perms::PermissionError;
 use serde::Serialize;
 use sqlx::migrate::MigrateError;
 use thiserror::Error;
-use tokio::sync::mpsc::error::SendError;
 
 #[derive(Debug, Error)]
 pub enum AppError {
@@ -29,6 +34,8 @@ pub enum AppError {
     Unauthorized(String),
     #[error("forbidden: {0}")]
     Forbidden(String),
+    #[error("banned: {0}")]
+    Banned(String),
     #[error("database error: {0}")]
     Database(sqlx::Error),
     #[error("internal error: {0}")]
@@ -71,12 +78,20 @@ pub enum AppError {
     InvalidNickname(NicknameError),
     #[error("invalid hash")]
     InvalidHash(HashError),
-    #[error("role error")]
-    RoleError(RoleError),
     #[error("json error: {0}")]
     JsonError(serde_json::error::Error),
-    #[error("send rights error: {0}")]
-    SendRightsError(SendError<Rights>),
+    #[error("resource type error: {0}")]
+    ResourceTypeError(ResourceTypeError),
+    #[error("share target error")]
+    ShareTargetError(ShareTargetError),
+    #[error("invalid perms value")]
+    InvalidPermsValue(PermsValueObjectError),
+    #[error("invalid group name")]
+    InvalidGroupName(GroupNameError),
+    #[error("invalid group weight")]
+    InvalidGroupWeight(GroupWeightError),
+    #[error("init totp error: {0}")]
+    TotpError(totp_rs::TotpError)
 }
 
 #[derive(Debug, Serialize)]
@@ -90,6 +105,10 @@ impl IntoResponse for AppError {
             Self::NotFound(_) => StatusCode::NOT_FOUND,
             Self::Conflict(_) => StatusCode::CONFLICT,
             Self::Validation(_)
+            | Self::ShareTargetError(_)
+            | Self::InvalidGroupName(_)
+            | Self::InvalidGroupWeight(_)
+            | Self::InvalidPermsValue(_)
             | Self::InvalidDirectoryName(_)
             | Self::InvalidDisplayName(_)
             | Self::InvalidVersion(_)
@@ -99,21 +118,22 @@ impl IntoResponse for AppError {
             | Self::InvalidDescription(_)
             | Self::InvalidIconUrl(_) => StatusCode::BAD_REQUEST,
             Self::Unauthorized(_) => StatusCode::UNAUTHORIZED,
-            Self::Forbidden(_) => StatusCode::UNAUTHORIZED,
+            Self::Forbidden(_) => StatusCode::FORBIDDEN,
+            Self::Banned(_) => StatusCode::FORBIDDEN,
             Self::TokenExpired(_) => StatusCode::UNAUTHORIZED,
             Self::Database(_)
             | Self::Internal(_)
             | Self::Configuration(_)
-            | Self::RoleError(_)
             | Self::Crypto(_)
             | Self::Uuid(_)
             | Self::JsonError(_)
             | Self::Fmt(_)
             | Self::InvalidHash(_)
             | Self::Token(_)
+            | Self::ResourceTypeError(_)
             | Self::Io(_)
+            | Self::TotpError(_)
             | Self::Url(_)
-            | Self::SendRightsError(_)
             | Self::Http(_)
             | Self::Migration(_) => StatusCode::INTERNAL_SERVER_ERROR,
         };
@@ -143,10 +163,24 @@ err_from!(VersionError, AppError, InvalidVersion);
 err_from!(DescriptionError, AppError, InvalidDescription);
 err_from!(LoaderError, AppError, InvalidLoader);
 err_from!(IconUrlError, AppError, InvalidIconUrl);
-err_from!(RoleError, AppError, RoleError);
 err_from!(std::io::Error, AppError, Io);
 err_from!(serde_json::error::Error, AppError, JsonError);
-err_from!(SendError<Rights>, AppError, SendRightsError);
+err_from!(ResourceTypeError, AppError, ResourceTypeError);
+err_from!(ShareTargetError, AppError, ShareTargetError);
+err_from!(GroupWeightError, AppError, InvalidGroupWeight);
+err_from!(GroupNameError, AppError, InvalidGroupName);
+err_from!(totp_rs::TotpError, AppError, TotpError);
+
+impl From<PermissionError> for AppError {
+    fn from(err: PermissionError) -> Self {
+        match err {
+            PermissionError::Denied(e) => Self::Forbidden(e.to_string()),
+            PermissionError::InsufficientRank(e) => Self::Forbidden(e.to_string()),
+            PermissionError::StoreError(e) => Self::Database(e),
+            PermissionError::InvalidValue(e) => Self::InvalidPermsValue(e),
+        }
+    }
+}
 
 impl From<ValueObjectError> for AppError {
     fn from(value: ValueObjectError) -> Self {

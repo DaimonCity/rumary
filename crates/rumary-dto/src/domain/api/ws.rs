@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 pub struct WsTicketClaims {
     pub sub: String,
     pub level: AccessLevel,
+    pub ver: i32,
     pub purpose: String,
     pub exp: usize,
     pub iat: usize,
@@ -12,7 +13,7 @@ pub struct WsTicketClaims {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct WsTicketV2Claims {
     pub sub: String,
-    pub level: Vec<usize>,
+    pub ver: i32,
     pub purpose: String,
     pub exp: usize,
     pub iat: usize,

@@ -1,5 +1,6 @@
 use crate::error::{AppError, AppResult};
 use std::env;
+use crate::util::check_first_time;
 
 #[derive(Clone)]
 pub struct Config {
@@ -12,6 +13,7 @@ pub struct Config {
     pub refresh_token_ttl_days: i64,
     pub ws_ticket_ttl_seconds: i64,
     pub secure_cookies: bool,
+    pub first_time: bool,
 }
 
 #[derive(Clone)]
@@ -25,6 +27,7 @@ pub struct DatabaseConfig {
 
 impl Config {
     pub fn from_env() -> AppResult<Self> {
+        let first_time = check_first_time();
         let host = read_env("API_HOST", "0.0.0.0");
         let port = parse_env("API_PORT", "3000")?;
         let secure_cookies = parse_env("COOKIE_SECURE", "false")?;
@@ -59,6 +62,7 @@ impl Config {
             refresh_token_ttl_days,
             ws_ticket_ttl_seconds,
             secure_cookies,
+            first_time
         })
     }
 

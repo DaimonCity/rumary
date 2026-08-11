@@ -1,5 +1,5 @@
-use crate::domain::file_path::FilePath;
-use crate::domain::value_object::download_url::DownloadUrl;
+use crate::domain::launcher::value_object::file_path::FilePath;
+use crate::domain::launcher::value_object::download_url::DownloadUrl;
 use std::collections::HashMap;
 
 #[derive(Debug)]

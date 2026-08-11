@@ -12,12 +12,14 @@ bcrypt.workspace = true
 serde.workspace = true
 uuid.workspace = true
 url.workspace = true
-pretty_env_logger.workspace = true
 semver = "1.0.28"
 
 
 [features]
 mojang = []
 domain_launcher = []
-domain_api = []
+# domain_api переиспользует request/response DTO (LoginOutcome и др.),
+# поэтому без dto_api он не собирается — включаем его явно.
+domain_api = ["dto_api"]
 dto_api = []
+domain_perms = []

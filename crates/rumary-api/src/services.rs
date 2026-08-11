@@ -2,14 +2,14 @@ use crate::error::AppResult;
 use crate::service::auth::AuthenticatedUser;
 use crate::service::file::FileHandle;
 use crate::service::totp::TotpService;
-use crate::service::userprofile::ProfileResponse;
 use async_trait::async_trait;
-use rumary_dto::domain::api::{LoginOutcome, RoleId, UserSession};
-use rumary_dto::domain::auth::tokens::TokenId;
-use rumary_dto::domain::configuration::ConfigurationId;
-use rumary_dto::domain::user::UserId;
+use rumary_dto::domain::api::value_object::auth::tokens::TokenId;
+use rumary_dto::domain::api::value_object::configuration::ConfigurationId;
+use rumary_dto::domain::api::value_object::user::UserId;
+use rumary_dto::domain::api::{BanId, LoginOutcome, User, UserBan, UserSession};
 use rumary_dto::dto::api::request::{
-    DeleteMeRequest, LoginRequest, RegisterRequest, TotpLoginRequest,
+    CreateUserBanRequest, LoginRequest, RegisterRequest, RevokeUserBanRequest,
+    TotpLoginRequest,
 };
 use rumary_dto::dto::api::response::{SessionTokensResponse, WsTicketResponse};
 use std::path::Path;
@@ -52,13 +52,33 @@ pub trait AuthProvider: Send + Sync {
 }
 
 #[async_trait]
+pub trait ModerationProvider: Send + Sync {
+    type Error;
+
+    async fn check_api_access(&self, user_id: UserId) -> Result<(), Self::Error>;
+    async fn ban_user(
+        &self,
+        actor_id: UserId,
+        target_id: UserId,
+        request: CreateUserBanRequest,
+    ) -> Result<UserBan, Self::Error>;
+    async fn list_user_bans(&self, user_id: UserId) -> Result<Vec<UserBan>, Self::Error>;
+    async fn revoke_user_ban(
+        &self,
+        actor_id: UserId,
+        target_id: UserId,
+        ban_id: BanId,
+        request: RevokeUserBanRequest,
+    ) -> Result<UserBan, Self::Error>;
+}
+
+#[async_trait]
 pub trait UserProfileProvider: Send + Sync {
     type Error;
-    async fn me(&self, user_id: UserId) -> Result<ProfileResponse, Self::Error>;
+    async fn get(&self, user_id: UserId) -> Result<User, Self::Error>;
     
-    async fn users_roles(&self, user_id: UserId) -> Result<Vec<RoleId>, Self::Error>;
-    async fn delete_me(&self, user_id: UserId, payload: DeleteMeRequest)
-    -> Result<(), Self::Error>;
+    async fn delete(&self, user_id: UserId, password: &str)
+                    -> Result<(), Self::Error>;
 }
 
 #[async_trait]

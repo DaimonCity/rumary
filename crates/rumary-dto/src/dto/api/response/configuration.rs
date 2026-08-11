@@ -10,7 +10,7 @@ pub struct ConfigurationsResponse {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct GetConfigurationResponse {
     pub id: Uuid,
-    pub icon: String,
+    pub icon: Option<String>,
     pub dir_name: String,
     pub display_name: String,
     pub instance_id: Uuid,

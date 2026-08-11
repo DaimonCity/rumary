@@ -7,7 +7,7 @@ use axum::{
     http::{HeaderMap, Response},
 };
 use http::{StatusCode, header};
-use rumary_dto::domain::configuration::ConfigurationId;
+use rumary_dto::domain::api::value_object::configuration::ConfigurationId;
 use rumary_dto::impl_new;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;

@@ -1,25 +1,23 @@
 use crate::error::{AppError, AppResult};
 use crate::repo::repository::{SessionRepository, UserRepository};
 use crate::service::totp::TotpService;
-use crate::services::AuthProvider;
+use crate::services::{AuthProvider, ModerationProvider};
 use crate::state::AppState;
 use async_trait::async_trait;
 use axum::extract::{FromRef, FromRequestParts};
 use chrono::{Duration, Utc};
 use http::header;
 use jsonwebtoken::{DecodingKey, EncodingKey, Header, Validation, decode, encode};
-// use rumary_dto::domain::api::AccessLevel;
 use rumary_dto::domain::api::{LoginOutcome, RoleType, User, UserSession};
 use rumary_dto::domain::api::{NewUser, RefreshSessionUpdate};
-use rumary_dto::domain::api::{RoleId, WsTicketClaims, WsTicketV2Claims};
-use rumary_dto::domain::auth::expiration_time::ExpirationTime;
-use rumary_dto::domain::user::{PasswordHash, UserId};
-use rumary_dto::domain::value_object::auth::tokens::{TokenHash, TokenId};
-// use rumary_dto::dto::api::request::ClaimsRequest;
+use rumary_dto::domain::api::{WsTicketClaims, WsTicketV2Claims};
+use rumary_dto::domain::api::value_object::auth::expiration_time::ExpirationTime;
+use rumary_dto::domain::api::value_object::user::{PasswordHash, UserId};
+use rumary_dto::domain::api::value_object::auth::tokens::{TokenHash, TokenId};
 use rumary_dto::dto::api::request::{
     ClaimsV2Request, LoginRequest, RegisterRequest, TotpLoginRequest,
 };
-use rumary_dto::dto::api::response::{/*ClaimsResponse,*/ ClaimsV2Response, SessionTokensResponse, TotpRequiredResponse, WsTicketResponse};
+use rumary_dto::dto::api::response::{ClaimsV2Response, SessionTokensResponse, TotpRequiredResponse, WsTicketResponse};
 use rumary_dto::impl_new;
 use std::sync::Arc;
 use uuid::Uuid;
@@ -32,6 +30,7 @@ pub struct AuthService {
     access_token_ttl_minutes: i64,
     refresh_token_ttl_days: i64,
     ws_ticket_ttl_seconds: i64,
+    moderation: Arc<dyn ModerationProvider<Error = AppError>>,
 }
 
 impl_new!(AuthService, user_repo: Arc<dyn UserRepository<Error = AppError>>,
@@ -39,10 +38,12 @@ impl_new!(AuthService, user_repo: Arc<dyn UserRepository<Error = AppError>>,
         jwt_secret: String,
         access_token_ttl_minutes: i64,
         refresh_token_ttl_days: i64,
-        ws_ticket_ttl_seconds: i64);
+        ws_ticket_ttl_seconds: i64,
+        moderation: Arc<dyn ModerationProvider<Error = AppError>>);
 
 impl AuthService {
     async fn issue_tokens(&self, user_id: UserId) -> AppResult<SessionTokensResponse> {
+        self.moderation.check_api_access(user_id).await?;
         let refresh_token = format!("{}{}", Uuid::new_v4().simple(), Uuid::new_v4().simple());
         let refresh_token_hash = TokenHash::new(refresh_token.clone())?;
 
@@ -79,11 +80,9 @@ impl AuthService {
     fn encode_access_token(&self, user: &User) -> AppResult<String> {
         let now = Utc::now();
         let exp = now + Duration::minutes(self.access_token_ttl_minutes);
-        let level = user.roles.clone();
-        let level = level.into_iter().map(Into::into).collect();
         let claims = ClaimsV2Response {
             sub: user.id.to_string(),
-            level,
+            ver: user.token_version,
             exp: exp.timestamp() as usize,
             iat: now.timestamp() as usize,
         };
@@ -137,6 +136,8 @@ impl AuthProvider for AuthService {
             return Err(AppError::Unauthorized("invalid credentials".to_string()));
         }
 
+        self.moderation.check_api_access(user.id).await?;
+
         let res = totp_service.is_enabled(user.id).await?;
 
         if res {
@@ -154,6 +155,8 @@ impl AuthProvider for AuthService {
         totp_service: &TotpService,
     ) -> AppResult<SessionTokensResponse> {
         let user_id = UserId(payload.user_id);
+
+        self.moderation.check_api_access(user_id).await?;
 
         if !totp_service.is_enabled(user_id).await?
             || !totp_service
@@ -224,13 +227,19 @@ impl AuthProvider for AuthService {
                 "user was not found in ws ticket".to_string(),
             ))?;
 
+        if claims.ver != user.token_version {
+            return Err(AppError::Unauthorized("websocket ticket was revoked".to_owned()));
+        }
+
+        self.moderation.check_api_access(user.id).await?;
+
         Ok(AuthenticatedUser {
             id: user.id,
-            roles: claims.level.into_iter().map(RoleId::new).collect(),
         })
     }
 
     async fn issue_ws_ticket(&self, user_id: UserId) -> AppResult<WsTicketResponse> {
+        self.moderation.check_api_access(user_id).await?;
         let user = self
             .user_repo
             .find_user(user_id)
@@ -243,6 +252,7 @@ impl AuthProvider for AuthService {
         let claims = WsTicketClaims {
             sub: user.id.to_string(),
             level: user.access_level,
+            ver: user.token_version,
             purpose: "ws".to_string(),
             exp: exp.timestamp() as usize,
             iat: now.timestamp() as usize,
@@ -285,9 +295,14 @@ impl AuthProvider for AuthService {
                 "user was not found while auth token".to_string(),
             ))?;
 
+        if claims.ver != user.token_version {
+            return Err(AppError::Unauthorized("access token was revoked".to_owned()));
+        }
+
+        self.moderation.check_api_access(user.id).await?;
+
         Ok(AuthenticatedUser {
             id: user.id,
-            roles: claims.level.into_iter().map(RoleId::new).collect(),
         })
     }
 
@@ -412,7 +427,6 @@ where
 #[derive(Debug, Clone)]
 pub struct AuthenticatedUser {
     pub id: UserId,
-    pub roles: Vec<RoleId>, // pub access_level: AccessLevel,
 }
 
 #[derive(Debug, Clone)]

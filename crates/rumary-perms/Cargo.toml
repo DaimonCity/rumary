@@ -1,0 +1,19 @@
+[package]
+name = "rumary-perms"
+version.workspace = true
+edition.workspace = true
+
+[lib]
+name = "rumary_perms"
+
+[dependencies]
+async-trait.workspace = true
+chrono.workspace = true
+moka = { version = "0.12", features = ["future"] }
+sqlx.workspace = true
+thiserror.workspace = true
+rumary-dto = { path = "../rumary-dto", features = ["domain_perms"] }
+
+[dev-dependencies]
+tokio.workspace = true
+uuid.workspace = true

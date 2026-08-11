@@ -5,10 +5,9 @@ use chacha20poly1305::{ChaCha20Poly1305, Key, KeyInit, Nonce};
 use rand::TryRng;
 use rand::rngs::SysRng;
 use rumary_dto::domain::api::NewTotpUser;
-use rumary_dto::domain::user::UserId;
-use rumary_dto::dto::api::response::TotpSetupResponse;
+use rumary_dto::domain::api::value_object::user::UserId;
 use std::sync::Arc;
-use totp_rs::{Algorithm, Secret, TOTP};
+use totp_rs::{Algorithm, Secret, Totp};
 
 #[derive(Clone)]
 pub struct TotpService {
@@ -22,11 +21,17 @@ impl TotpService {
     }
 
     pub async fn is_enabled(&self, user_id: UserId) -> AppResult<bool> {
-        Ok(self.repo.find_totp_user(user_id).await?.is_some())
+        if let Some(t) = self.repo.find_totp_user(user_id).await? {
+            return Ok(t.confirmed);
+        }
+        Ok(false)
     }
 
-    pub async fn enable_for_user(&self, user_id: UserId) -> AppResult<TotpSetupResponse> {
-        let secret = Secret::generate_secret().to_string();
+    pub async fn enable_for_user(&self, user_id: UserId) -> AppResult<Totp> /*TotpSetupResponse*/ {
+        if self.is_enabled(user_id).await? {
+            return Err(AppError::Conflict("2FA already enabled".to_string()));
+        }
+        let secret = Secret::generate();
         let (encrypted_secret, nonce) = encrypt(secret.as_bytes(), self.secret_key)?;
 
         let new_totp_user = NewTotpUser {
@@ -37,30 +42,20 @@ impl TotpService {
 
         self.repo.create_totp_user(new_totp_user).await?; // By default, status will be NOT confirmed
 
-        let totp = TOTP::new(
-            Algorithm::SHA1,
-            6,
-            1,
-            30,
-            secret.into_bytes(),
-            None,
-            "rumary-test".to_string(),
-        )
-        .map_err(|_| AppError::Crypto("failed to create totp".to_string()))?;
+        let totp = totp(secret)?;
 
-        Ok(TotpSetupResponse {
-            otp_auth_url: totp.get_url(),
-        })
+        Ok(totp)
     }
 
     pub async fn confirm_for_user(&self, user_id: UserId, code: &str) -> AppResult<()> {
         let res = self.verify_user_code(user_id, code).await?;
         if res {
-            self.repo.totp_user_confirmed(user_id).await?;
+            self.repo.totp_user_enable(user_id).await?;
+            Ok(())
         } else {
             self.repo.delete_totp_user(user_id).await?;
+            Err(AppError::Unauthorized("invalid totp code".to_string()))
         }
-        Ok(())
     }
 
     pub async fn delete_for_user(&self, user_id: UserId, code: &str) -> AppResult<()> {
@@ -82,33 +77,39 @@ impl TotpService {
             .find_totp_user(user_id)
             .await?
             .ok_or(AppError::NotFound(
-                "totp user not found in deleting".to_string(),
+                "totp user was not found".to_string(),
             ))?;
 
         let encrypted_secret = user.totp.clone();
         let nonce = user.nonce.clone();
 
         let decrypted_secret = decrypt(&encrypted_secret, &nonce, self.secret_key)?;
-        let totp = TOTP::new(
-            Algorithm::SHA1,
-            6,
-            1,
-            30,
-            decrypted_secret,
-            None,
-            "UCafe".to_string(),
-        )
-        .map_err(|_| AppError::Crypto("failed to create totp".to_string()))?;
+        let totp = totp(decrypted_secret)?;
 
-        let is_valid = totp
-            .check_current(code)
-            .map_err(|_| AppError::Unauthorized("invalid totp code".to_string()))?;
-        if !is_valid {
-            return Err(AppError::Unauthorized("invalid totp code".to_string()));
+        let step = if let Some(step) = totp.check_current(code) {
+            step as i64
+        } else {
+            return Ok(false);
+        };
+
+        let updated = self.repo.save_used_step_if_newer(user_id, step).await?;
+        
+        if !updated {
+            return Ok(false);
         }
 
         Ok(true)
     }
+}
+
+
+fn totp(secret: impl Into<Secret>) -> AppResult<Totp> {
+    totp_rs::Builder::new()
+        .with_algorithm(Algorithm::SHA1)
+        .with_secret(secret)
+        .with_account_name("rumary")
+        .with_digits(6)
+        .build().map_err(Into::into)
 }
 
 fn encrypt(text: &[u8], key: [u8; 32]) -> AppResult<(String, String)> {

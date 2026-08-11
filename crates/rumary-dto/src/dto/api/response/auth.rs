@@ -17,7 +17,7 @@ pub struct ClaimsResponse {
 #[derive(Debug, Serialize)]
 pub struct ClaimsV2Response {
     pub sub: String,
-    pub level: Vec<usize>,
+    pub ver: i32,
     pub exp: usize,
     pub iat: usize,
 }

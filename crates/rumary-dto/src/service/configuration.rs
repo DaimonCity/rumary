@@ -1,8 +1,8 @@
 use crate::domain::api::{Configuration, NewConfiguration, UpdateConfiguration};
-use crate::domain::error::ValueObjectError;
-use crate::domain::instance::InstanceId;
-use crate::domain::name::{DirectoryName, DisplayName};
-use crate::domain::url::IconUrl;
+use crate::domain::api::value_object::error::ValueObjectError;
+use crate::domain::api::value_object::instance::InstanceId;
+use crate::domain::api::value_object::name::{DirectoryName, DisplayName};
+use crate::domain::api::value_object::url::IconUrl;
 use crate::dto::api::request::{NewConfigurationRequest, UpdateConfigurationRequest};
 use crate::dto::api::response::GetConfigurationResponse;
 
@@ -10,7 +10,7 @@ impl From<Configuration> for GetConfigurationResponse {
     fn from(config: Configuration) -> Self {
         Self {
             id: config.id.into(),
-            icon: config.icon.into(),
+            icon: config.icon.map(Into::into),
             dir_name: config.dir_name.into(),
             display_name: config.display_name.into(),
             instance_id: config.instance_id.into(),
@@ -33,6 +33,7 @@ impl TryFrom<NewConfigurationRequest> for NewConfiguration {
             dir_name,
             display_name,
             instance_id: request.instance_id.into(),
+            is_public: request.is_public,
         })
     }
 }

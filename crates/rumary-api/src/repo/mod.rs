@@ -1,4 +1,4 @@
 pub mod db;
-pub mod json;
+pub mod perms;
 pub mod repository;
-pub mod rights;
+pub mod moderation;

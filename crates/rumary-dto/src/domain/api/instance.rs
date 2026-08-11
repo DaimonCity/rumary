@@ -1,9 +1,8 @@
 use crate::domain::api::loader::Loader;
-use crate::domain::api::RightKey;
-use crate::domain::instance::InstanceId;
-use crate::domain::name::{Description, DirectoryName, DisplayName};
-use crate::domain::url::IconUrl;
-use crate::domain::value_object::version::Version;
+use crate::domain::api::value_object::instance::InstanceId;
+use crate::domain::api::value_object::name::{Description, DirectoryName, DisplayName};
+use crate::domain::api::value_object::url::IconUrl;
+use crate::domain::api::value_object::version::Version;
 
 pub struct NewInstance {
     pub icon: IconUrl,
@@ -12,6 +11,7 @@ pub struct NewInstance {
     pub version: Version,
     pub description: Description,
     pub loader: Loader,
+    pub is_public: bool,
 }
 
 pub struct UpdateInstance {
@@ -31,15 +31,5 @@ pub struct Instance {
     pub version: Version,
     pub description: Description,
     pub loader: Loader,
-}
-
-impl Instance {
-    /// Возвращает базовые права, связанные с этим инстансом, и их статус по умолчанию
-    pub fn default_rights_setup(id: &InstanceId) -> Vec<(RightKey<'static>, bool)> {
-        vec![
-            (RightKey::get_instance_key(id), false),
-            (RightKey::update_instance_key(id), false),
-            (RightKey::delete_instance_key(id), false),
-        ]
-    }
+    pub is_public: bool,
 }

@@ -34,7 +34,7 @@ pub struct ClaimsRequest {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ClaimsV2Request {
     pub sub: String,
-    pub level: Vec<usize>,
+    pub ver: i32,
     pub exp: usize,
     pub iat: usize,
 }

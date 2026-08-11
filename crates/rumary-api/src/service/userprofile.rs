@@ -3,22 +3,13 @@ use crate::repo::repository::{TotpRepository, UserRepository};
 use crate::services::UserProfileProvider;
 use async_trait::async_trait;
 use bcrypt::verify;
-use rumary_dto::domain::api::{RoleId, User};
-use rumary_dto::domain::user::UserId;
-use rumary_dto::dto::api::request::DeleteMeRequest;
-use serde::Serialize;
+use rumary_dto::domain::api::{User};
+use rumary_dto::domain::api::value_object::user::UserId;
 use std::sync::Arc;
 
 pub struct UserProfileService {
     user_repo: Arc<dyn UserRepository<Error = AppError>>,
     totp_repo: Arc<dyn TotpRepository<Error = AppError>>,
-}
-
-#[derive(Debug, Serialize)]
-pub struct ProfileResponse {
-    pub login: String,
-    pub nickname: String,
-    pub has_totp: bool,
 }
 
 impl UserProfileService {
@@ -45,30 +36,15 @@ impl UserProfileService {
 #[async_trait]
 impl UserProfileProvider for UserProfileService {
     type Error = AppError;
-    async fn me(&self, user_id: UserId) -> AppResult<ProfileResponse> {
+    async fn get(&self, user_id: UserId) -> AppResult<User> {
         let user = self.get_user(user_id).await?;
-
-        let totp_user = self.totp_repo.find_totp_user(user_id).await?;
-
-        let profile = ProfileResponse {
-            login: user.login.into(),
-            nickname: user.nickname.into(),
-            has_totp: totp_user.is_some(),
-        };
-
-        Ok(profile)
+        Ok(user)
     }
 
-    async fn users_roles(&self, user_id: UserId) -> Result<Vec<RoleId>, Self::Error> {
+    async fn delete(&self, user_id: UserId, password: &str) -> AppResult<()> {
         let user = self.get_user(user_id).await?;
 
-        Ok(user.roles)
-    }
-
-    async fn delete_me(&self, user_id: UserId, payload: DeleteMeRequest) -> AppResult<()> {
-        let user = self.get_user(user_id).await?;
-
-        let is_valid = verify(payload.password, &user.password_hash)
+        let is_valid = verify(password, &user.password_hash)
             .map_err(|_| AppError::Crypto("failed to verify password".to_string()))?;
         if !is_valid {
             return Err(AppError::Unauthorized("invalid password".to_string()));

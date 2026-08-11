@@ -1,17 +1,15 @@
-use crate::service::right::Rights;
 use async_trait::async_trait;
 use rumary_dto::domain::api::{
-    Configuration, Instance, NewConfiguration, NewInstance, NewRole, RightKey, UpdateConfiguration,
-    UpdateInstance, UpdateRoleDb,
+    Configuration, Instance, NewConfiguration, NewInstance, UpdateConfiguration, UpdateInstance,
 };
 use rumary_dto::domain::api::{
-    NewTotpUser, NewUser, RefreshSessionUpdate, TotpUser, User, UserSession,
+    BanId, NewTotpUser, NewUser, NewUserBan, RefreshSessionUpdate, TotpUser, User, UserBan,
+    UserSession,
 };
-use rumary_dto::domain::auth::tokens::TokenId;
-use rumary_dto::domain::configuration::ConfigurationId;
-use rumary_dto::domain::instance::InstanceId;
-use rumary_dto::domain::user::{Login, UserId};
-use rumary_dto::dto::api::db::role::RoleFromRow;
+use rumary_dto::domain::api::value_object::auth::tokens::TokenId;
+use rumary_dto::domain::api::value_object::configuration::ConfigurationId;
+use rumary_dto::domain::api::value_object::instance::InstanceId;
+use rumary_dto::domain::api::value_object::user::{Login, UserId};
 use std::path::{Path, PathBuf};
 
 #[async_trait]
@@ -30,14 +28,12 @@ pub trait InstanceRepository: Send + Sync {
     async fn create_instance(&self, new_instance: NewInstance) -> Result<Instance, Self::Error>;
     async fn update_instance(
         &self,
+        instance_id: InstanceId,
         update_instance: UpdateInstance,
     ) -> Result<Instance, Self::Error>;
     async fn get_instance(&self, id: InstanceId) -> Result<Instance, Self::Error>;
     async fn delete_instance(&self, id: InstanceId) -> Result<Instance, Self::Error>;
-    async fn list_instances(
-        &self,
-        available_ids: &[InstanceId],
-    ) -> Result<Vec<Instance>, Self::Error>;
+    async fn list_instances(&self) -> Result<Vec<Instance>, Self::Error>;
 }
 
 #[async_trait]
@@ -54,14 +50,11 @@ pub trait ConfigurationRepository: Send + Sync {
     ) -> Result<Configuration, Self::Error>;
     async fn get_config(&self, id: ConfigurationId) -> Result<Configuration, Self::Error>;
     async fn delete_config(&self, id: ConfigurationId) -> Result<Configuration, Self::Error>;
-    async fn list_configs_by_instance(
+    async fn list_for_instance(
         &self,
         instance_id: InstanceId,
     ) -> Result<Vec<Configuration>, Self::Error>;
-    async fn list_all_configs(
-        &self,
-        available_ids: &[ConfigurationId],
-    ) -> Result<Vec<Configuration>, Self::Error>;
+    async fn list_all_configs(&self) -> Result<Vec<Configuration>, Self::Error>;
 }
 
 #[async_trait]
@@ -80,12 +73,39 @@ pub trait SessionRepository: Send + Sync {
 }
 
 #[async_trait]
+pub trait ModerationRepository: Send + Sync {
+    type Error;
+
+    async fn create_user_ban_and_revoke_sessions(
+        &self,
+        ban: NewUserBan,
+    ) -> Result<UserBan, Self::Error>;
+
+    async fn find_active_api_ban(
+        &self,
+        user_id: UserId,
+    ) -> Result<Option<UserBan>, Self::Error>;
+
+    async fn list_user_bans(&self, user_id: UserId) -> Result<Vec<UserBan>, Self::Error>;
+
+    async fn revoke_user_ban(
+        &self,
+        ban_id: BanId,
+        user_id: UserId,
+        revoked_by: UserId,
+        reason: String,
+    ) -> Result<Option<UserBan>, Self::Error>;
+}
+
+#[async_trait]
 pub trait TotpRepository: Send + Sync {
     type Error;
     async fn create_totp_user(&self, user: NewTotpUser) -> Result<TotpUser, Self::Error>;
-    async fn totp_user_confirmed(&self, user_id: UserId) -> Result<TotpUser, Self::Error>;
+    async fn totp_user_enable(&self, user_id: UserId) -> Result<TotpUser, Self::Error>;
     async fn find_totp_user(&self, user_id: UserId) -> Result<Option<TotpUser>, Self::Error>;
+    async fn totp_user_disable(&self, user_id: UserId) -> Result<Option<TotpUser>, Self::Error>;
     async fn delete_totp_user(&self, user_id: UserId) -> Result<(), Self::Error>;
+    async fn save_used_step_if_newer(&self, user_id: UserId, step: i64) -> Result<bool, Self::Error>;
 }
 
 #[async_trait]
@@ -99,38 +119,6 @@ pub trait SettingsRepository: Send + Sync {
 /// Admin -> Worker 10
 /// Writer/Builder -> Worker 5
 ///
-#[async_trait]
-pub trait RolesRepository: Send + Sync {
-    type Error;
-    async fn create_role(&self, new_role: NewRole) -> Result<RoleFromRow, Self::Error>;
-    async fn update_role(&self, update_role: UpdateRoleDb) -> Result<RoleFromRow, Self::Error>;
-    async fn get_role(&self) -> Result<RoleFromRow, Self::Error>;
-    async fn delete_role(&self) -> Result<(), Self::Error>;
-    async fn list_roles(&self) -> Result<Vec<RoleFromRow>, Self::Error>;
-}
-
-#[async_trait]
-pub trait RightsRepository: Send + Sync {
-    type Error;
-    async fn add_right(
-        &self,
-        right_key: RightKey<'static>,
-        default_value: bool,
-    ) -> Result<(), Self::Error>;
-    async fn add_rights(
-        &self,
-        right_keys: &[RightKey<'static>],
-        default_value: &[bool],
-    ) -> Result<(), Self::Error>;
-    async fn update_right(
-        &self,
-        right_key: RightKey<'static>,
-        default_value: bool,
-    ) -> Result<(), Self::Error>;
-    async fn get_rights(&self) -> Result<Rights, Self::Error>;
-    async fn remove_right(&self, right_key: RightKey<'static>) -> Result<(), Self::Error>;
-    async fn remove_rights(&self, right_keys: &[RightKey<'static>]) -> Result<(), Self::Error>;
-}
 
 #[async_trait]
 pub trait DiscordUserRepository: Send + Sync {}

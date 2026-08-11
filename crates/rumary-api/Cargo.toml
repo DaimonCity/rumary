@@ -20,13 +20,16 @@ uuid.workspace = true
 pretty_env_logger.workspace = true
 dns-lookup = "3.0.1"
 http = "1.4.0"
-jsonwebtoken = "10.4.0"
+jsonwebtoken = { version = "11.0", features = ["aws_lc_rs", "use_pem"] }
+
 axum-extra = { version = "0.12", features = ["typed-header", "cookie"] }
 dotenv = "0.15"
-rumary-dto = { path = "../rumary-dto", features = ["dto_api", "domain_api"] }
+rumary-dto = { path = "../rumary-dto", features = ["dto_api", "domain_api", "domain_perms"] }
+rumary-perms = { path = "../rumary-perms" }
 
 chacha20poly1305 = "0.11.0-rc.3"
 rand = "0.10"
-totp-rs = { version = "5.7.2", features = ["otpauth", "gen_secret"] }
+totp-rs = { version = "6.0.0", features = ["otpauth", "gen_secret"] }
 hex = "0.4.3"
+moka = "0.12.15"
 

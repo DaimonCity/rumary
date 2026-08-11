@@ -12,12 +12,7 @@ impl SettingsService {
         Self { settings_repo }
     }
 
-    pub async fn add_instance_path(&self, path: &Path) -> AppResult<()> {
-        self.settings_repo.save_instance_dir_path(path).await
-    }
-
-    pub async fn edit_instance_path(&self, path: &Path) -> AppResult<()> {
-        self.remove_instance_path().await?;
+    pub async fn set_instance_path(&self, path: &Path) -> AppResult<()> {
         self.settings_repo.save_instance_dir_path(path).await
     }
 

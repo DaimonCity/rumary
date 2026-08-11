@@ -1,5 +1,5 @@
-use crate::domain::auth::expiration_time::ExpirationTime;
-use crate::domain::value_object::auth::tokens::{TokenHash, TokenId};
+use crate::domain::api::value_object::auth::expiration_time::ExpirationTime;
+use crate::domain::api::value_object::auth::tokens::{TokenHash, TokenId};
 use crate::dto::api::response::{SessionTokensResponse, TotpRequiredResponse};
 use serde::{Deserialize, Serialize};
 

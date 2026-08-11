@@ -1,11 +1,11 @@
 use crate::error::{AppError, AppResult};
 use crate::service::auth::AuthenticatedUser;
-// use crate::service::auth::{AdminUser, MaybeWorkerUser};
-use crate::service::userprofile::ProfileResponse;
+use crate::service::permissions::ResourceAction;
 use crate::state::AppState;
 use axum::body::Body;
-use axum::extract::Path;
+use axum::extract::{Path, Query};
 use axum::response::{IntoResponse, Response};
+use axum::routing::{delete, patch, put};
 use axum::{
     Json, Router,
     extract::State,
@@ -13,25 +13,38 @@ use axum::{
 };
 use axum_extra::extract::CookieJar;
 use axum_extra::extract::cookie::{Cookie, SameSite};
-// use rumary_dto::domain::api::RoleType;
-use rumary_dto::domain::api::{Configuration, Instance, LoginOutcome, RightKey, Role, RoleId, UpdateRole, User};
-use rumary_dto::domain::configuration::ConfigurationId;
-use rumary_dto::domain::instance::InstanceId;
-use rumary_dto::domain::user::UserId;
+use rumary_dto::domain::api::LoginOutcome;
+use rumary_dto::domain::api::group::ListGroupsQuery;
+use rumary_dto::domain::api::share_target::ShareTarget;
+use rumary_dto::domain::api::value_object::configuration::ConfigurationId;
+use rumary_dto::domain::api::value_object::instance::InstanceId;
+use rumary_dto::domain::api::value_object::user::UserId as ApiUserId;
+use rumary_dto::domain::perms::value_object::expiration::NodeExpiry;
+use rumary_dto::domain::perms::value_object::group::{GroupName, GroupWeight};
+use rumary_dto::domain::perms::value_object::node::PermissionKey;
+use rumary_dto::domain::perms::value_object::resource::ResourceType;
+use rumary_dto::domain::perms::value_object::user::UserId as PermsUserId;
+use rumary_dto::domain::perms::{ContextSet, GroupListQuery, NodeValue};
+use rumary_dto::dto::api::request::NewGroupRequest;
+use rumary_dto::dto::api::request::share_target::ShareTargetRequest;
 use rumary_dto::dto::api::request::{
-    DeleteMeRequest, InstancePathRequest, LoginRequest, NewConfigurationRequest,
-    NewInstanceRequest, RegisterRequest, TotpLoginRequest, UpdateConfigurationRequest,
-    UpdateInstanceResponse,
+    AddGroupMemberRequest, AddGroupParentRequest, CreateUserBanRequest, DeleteMeRequest,
+    InstancePathRequest, LoginRequest, NewConfigurationRequest, NewInstanceRequest,
+    RegisterRequest, RevokeUserBanRequest, TotpLoginRequest, UpdateConfigurationRequest,
+    UpdateGroupPermissionsRequest, UpdateGroupWeightRequest, UpdateInstanceRequest,
 };
-use rumary_dto::dto::api::request::{NewRoleRequest, UpdateRoleRequest};
-use rumary_dto::dto::api::response::role::GetRoleResponse;
+use rumary_dto::dto::api::response::group::{
+    GetGroupResponse, GroupPermissionResponse, GroupSummaryResponse,
+};
+use rumary_dto::dto::api::response::{CapabilitiesResponse, ProfileResponse};
 use rumary_dto::dto::api::response::{
     GetConfigurationResponse, GetInstanceResponse, SessionTokensResponse, TokenResponse,
+    UserBanResponse,
 };
+use rumary_perms::{PermissionError, require_outranks};
 use serde_json::json;
 use std::path::PathBuf;
 use std::sync::Arc;
-use tokio::task::JoinSet;
 use uuid::Uuid;
 
 const REFRESH_TOKEN_COOKIE: &str = "refresh_token";
@@ -45,7 +58,17 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/api/v1/auth/login/totp", post(verify_totp))
         .route("/api/v1/auth/refresh", post(refresh))
         .route("/api/v1/auth/logout", post(logout))
-        .route("/api/v1/users/me", get(get_me).delete(delete_me))
+        .route("/api/v1/users/me", get(user_get_me).delete(delete_me))
+        .route("/api/v1/users/me/capabilities", get(user_capabilities))
+        .route("/api/v1/user/{user_id}", get(user_get))
+        .route(
+            "/api/v1/user/{user_id}/bans",
+            get(list_user_bans).post(create_user_ban),
+        )
+        .route(
+            "/api/v1/user/{user_id}/bans/{ban_id}",
+            delete(revoke_user_ban),
+        )
         .route(
             "/api/v1/settings/instance_path",
             post(set_instance_path).delete(remove_instance_path),
@@ -69,13 +92,27 @@ pub fn build_router(state: Arc<AppState>) -> Router {
                 .patch(update_configuration)
                 .delete(delete_configuration),
         )
-        .route("/api/v1/configurations", get(list_configuration))
-        .route("/api/v1/role", post(create_role))
         .route(
-            "/api/v1/role/{role_id}",
-            get(get_role).patch(update_role).delete(delete_role),
+            "/api/v1/instance/{instance_id}/configurations",
+            get(list_configuration),
         )
-        .route("/api/v1/roles", get(list_roles))
+        .route("/api/v1/groups", get(list_groups).post(create_group))
+        .route("/api/v1/groups/{name}", get(get_group).delete(delete_group))
+        .route("/api/v1/groups/{name}/weight", put(update_group_weight))
+        .route(
+            "/api/v1/groups/{name}/permissions",
+            patch(update_group_permissions),
+        )
+        .route("/api/v1/groups/{name}/parents", post(add_group_parent))
+        .route(
+            "/api/v1/groups/{name}/parents/{parent}",
+            delete(remove_group_parent),
+        )
+        .route("/api/v1/groups/{name}/members", post(add_group_member))
+        .route(
+            "/api/v1/groups/{name}/members/{user_id}",
+            delete(remove_group_member),
+        )
         .with_state(state)
 }
 
@@ -84,7 +121,7 @@ async fn health() -> Json<serde_json::Value> {
 }
 
 ///////////////////
-// AUTHENTICATION
+// AUTH
 ///////////////////
 
 async fn register(
@@ -93,14 +130,28 @@ async fn register(
     Json(payload): Json<RegisterRequest>,
 ) -> AppResult<(CookieJar, Json<TokenResponse>)> {
     let tokens = state.auth.register(payload).await?;
-    let auth_user = state
-        .auth
-        .authenticate_access_token(&tokens.access_token)
-        .await?;
-    let role = state.role.read().await;
-    let (k, v): (Vec<_>, Vec<_>) = User::default_rights_setup(&auth_user.id).into_iter().unzip();
+    let user = {
+        let user = state
+            .auth
+            .authenticate_access_token(&tokens.access_token)
+            .await?;
+        state.user_profile.get(user.id).await?
+    };
 
-    role.add_rights(&k, &v).await?;
+    let resource = user.resource_ref()?;
+    state
+        .perms_admin
+        .add_user_to_group(
+            user.id.into(),
+            &GroupName::try_from("user".to_string())?,
+            &ContextSet::empty(),
+            None,
+        )
+        .await?;
+    state
+        .perms
+        .register_created_resource(user.id.into(), &resource, &[])
+        .await?;
     Ok((
         with_session_cookies(jar, &state, &tokens),
         Json(TokenResponse {
@@ -109,13 +160,11 @@ async fn register(
     ))
 }
 
-/// Handler для аутентификации через логин и пароль
 async fn login(
     State(state): State<Arc<AppState>>,
     jar: CookieJar,
     Json(payload): Json<LoginRequest>,
 ) -> AppResult<Response> {
-    // action
     match state.auth.login(payload, state.totp.as_ref()).await? {
         LoginOutcome::Tokens(tokens) => Ok((
             with_session_cookies(jar, &state, &tokens),
@@ -130,13 +179,11 @@ async fn login(
     }
 }
 
-/// Handler для аутентификации через totp
 async fn verify_totp(
     State(state): State<Arc<AppState>>,
     jar: CookieJar,
     Json(payload): Json<TotpLoginRequest>,
 ) -> AppResult<(CookieJar, Json<TokenResponse>)> {
-    // action
     let tokens = state.auth.verify_totp(payload, &state.totp).await?;
     Ok((
         with_session_cookies(jar, &state, &tokens),
@@ -146,8 +193,7 @@ async fn verify_totp(
     ))
 }
 
-/// Handler для обновления сессии по refresh_token
-/// Ключ Права: auth.session.refresh
+/// Ключ Права: auth.session.update
 async fn refresh(
     State(state): State<Arc<AppState>>,
     jar: CookieJar,
@@ -170,24 +216,23 @@ async fn refresh(
         .await?;
     let user_id = user_session.id;
 
-    // access checking
-    let is_available = check_available(state.clone(), user_id, RightKey::REFRESH).await?;
+    state
+        .perms
+        .require_action(
+            user_id.into(),
+            &ResourceType::try_from("auth.session")?,
+            ResourceAction::Update,
+            &ContextSet::empty(),
+        )
+        .await?;
 
-    if is_available {
-        // action
-        let tokens = state.auth.refresh(&refresh_token, user_session).await?;
-        return Ok((
-            with_session_cookies(jar, &state, &tokens),
-            Json(TokenResponse {
-                access_token: tokens.access_token,
-            }),
-        ));
-    }
-
-    Err(AppError::Forbidden(format!(
-        "{} has not the needed right",
-        user_id
-    )))
+    let tokens = state.auth.refresh(&refresh_token, user_session).await?;
+    Ok((
+        with_session_cookies(jar, &state, &tokens),
+        Json(TokenResponse {
+            access_token: tokens.access_token,
+        }),
+    ))
 }
 
 async fn logout(
@@ -200,40 +245,179 @@ async fn logout(
 }
 
 ///////////////////
-
-///////////////////
 // USERS
 ///////////////////
 
-/// Handler для получения информации о пользователе через access_token
-/// Ключ Права: profile.<UserId>.get
-async fn get_me(
+/// Ключ Права: user.get (RBAC) + ACL по конкретному профилю
+async fn user_get_me(
     State(state): State<Arc<AppState>>,
     auth_user: AuthenticatedUser,
 ) -> AppResult<Json<ProfileResponse>> {
-    let user_id = auth_user.id;
-    // access checking
-    let is_available = check_available(
-        state.clone(),
-        user_id,
-        RightKey::get_me_key(&user_id),
-    )
-        .await?;
-
-    if is_available {
-        // action
-        let profile = state.user_profile.me(auth_user.id).await?;
-        return Ok(Json(profile));
-    }
-
-    Err(AppError::Forbidden(format!(
-        "{} has not the needed right",
-        user_id
-    )))
+    user_get(Path(*auth_user.id), State(state), auth_user).await
 }
 
-/// Handler для получения информации о пользователе через access_token
-/// Ключ Права: profile.<UserId>.delete
+const UI_PERMISSION_KEYS: &[&str] = &[
+    "*",
+    "instance.list",
+    "instance.create",
+    "instance.update",
+    "instance.delete",
+    "instance.configurations.list",
+    "configuration.get",
+    "configuration.create",
+    "configuration.update",
+    "configuration.delete",
+    "configuration.download",
+    "user.ban",
+    "user.ban.permanent",
+    "user.unban",
+    "settings.instance_path.update",
+    "settings.instance_path.delete",
+    "group.list",
+    "group.get",
+    "group.create",
+    "group.delete",
+    "group.weight.update",
+    "group.permissions.update",
+    "group.parents.update",
+    "group.members.create",
+    "group.members.delete",
+];
+
+async fn user_capabilities(
+    State(state): State<Arc<AppState>>,
+    auth_user: AuthenticatedUser,
+) -> AppResult<Json<CapabilitiesResponse>> {
+    let user_id = auth_user.id.into();
+    let context = ContextSet::empty();
+    let mut permissions = Vec::new();
+
+    for raw_key in UI_PERMISSION_KEYS {
+        let key = PermissionKey::try_from(*raw_key).map_err(PermissionError::from)?;
+        if state.perms.service().check(user_id, &key, &context).await {
+            permissions.push((*raw_key).to_string());
+        }
+    }
+
+    Ok(Json(CapabilitiesResponse { permissions }))
+}
+
+/// Ключ Права: user.get (RBAC) + ACL по конкретному профилю
+async fn user_get(
+    Path(user_id): Path<Uuid>,
+    State(state): State<Arc<AppState>>,
+    auth_user: AuthenticatedUser,
+) -> AppResult<Json<ProfileResponse>> {
+    let actor_id = auth_user.id.into();
+    let user = state.user_profile.get(user_id.into()).await?;
+    let resource = user.resource_ref()?;
+
+    state
+        .perms
+        .require_resource_access(
+            actor_id,
+            &resource,
+            ResourceAction::Get,
+            user.is_public,
+            &ContextSet::empty(),
+        )
+        .await?;
+
+    let has_totp = state.totp.is_enabled(user_id.into()).await?;
+    Ok(Json(user.to_profile_response(has_totp)))
+}
+
+/// Ключ права: user.ban + строгая проверка ранга.
+async fn create_user_ban(
+    Path(target_id): Path<Uuid>,
+    State(state): State<Arc<AppState>>,
+    auth_user: AuthenticatedUser,
+    Json(payload): Json<CreateUserBanRequest>,
+) -> AppResult<(http::StatusCode, Json<UserBanResponse>)> {
+    let actor_id = auth_user.id;
+    let target_id = ApiUserId::from(target_id);
+    state
+        .perms
+        .require_action_on_user(
+            actor_id.into(),
+            target_id.into(),
+            &ResourceType::try_from("user")?,
+            ResourceAction::Ban,
+            &ContextSet::empty(),
+        )
+        .await?;
+
+    if payload.expires_at.is_none() {
+        state
+            .perms
+            .require_action_on_user(
+                actor_id.into(),
+                target_id.into(),
+                &ResourceType::try_from("user")?,
+                ResourceAction::BanPermanent,
+                &ContextSet::empty(),
+            )
+            .await?;
+    }
+
+    let ban = state
+        .moderation
+        .ban_user(actor_id, target_id, payload)
+        .await?;
+    Ok((http::StatusCode::CREATED, Json(ban.into())))
+}
+
+/// Ключ права: user.ban + строгая проверка ранга.
+async fn list_user_bans(
+    Path(target_id): Path<Uuid>,
+    State(state): State<Arc<AppState>>,
+    auth_user: AuthenticatedUser,
+) -> AppResult<Json<Vec<UserBanResponse>>> {
+    let actor_id = auth_user.id;
+    let target_id = ApiUserId::from(target_id);
+    state
+        .perms
+        .require_action_on_user(
+            actor_id.into(),
+            target_id.into(),
+            &ResourceType::try_from("user")?,
+            ResourceAction::Ban,
+            &ContextSet::empty(),
+        )
+        .await?;
+
+    let bans = state.moderation.list_user_bans(target_id).await?;
+    Ok(Json(bans.into_iter().map(Into::into).collect()))
+}
+
+/// Ключ права: user.unban + строгая проверка ранга.
+async fn revoke_user_ban(
+    Path((target_id, ban_id)): Path<(Uuid, Uuid)>,
+    State(state): State<Arc<AppState>>,
+    auth_user: AuthenticatedUser,
+    Json(payload): Json<RevokeUserBanRequest>,
+) -> AppResult<Json<UserBanResponse>> {
+    let actor_id = auth_user.id;
+    let target_id = ApiUserId::from(target_id);
+    state
+        .perms
+        .require_action_on_user(
+            actor_id.into(),
+            target_id.into(),
+            &ResourceType::try_from("user")?,
+            ResourceAction::Unban,
+            &ContextSet::empty(),
+        )
+        .await?;
+
+    let ban = state
+        .moderation
+        .revoke_user_ban(actor_id, target_id, ban_id.into(), payload)
+        .await?;
+    Ok(Json(ban.into()))
+}
+
+/// Ключ Права: user.delete (RBAC) + ACL по конкретному профилю
 async fn delete_me(
     State(state): State<Arc<AppState>>,
     jar: CookieJar,
@@ -242,38 +426,34 @@ async fn delete_me(
 ) -> AppResult<CookieJar> {
     let user_id = auth_user.id;
 
-    // access checking
-    let is_available = check_available(
-        state.clone(),
-        user_id,
-        RightKey::delete_me_key(&user_id),
-    )
+    let user = state.user_profile.get(user_id).await?;
+    let resource = user.resource_ref()?;
+
+    state
+        .perms
+        .require_resource_access(
+            user_id.into(),
+            &resource,
+            ResourceAction::Delete,
+            user.is_public,
+            &ContextSet::empty(),
+        )
         .await?;
 
-    if is_available {
-        // action
-        state.user_profile.delete_me(auth_user.id, payload).await?;
-        let role = state.role.read().await;
-        let (k, _): (Vec<_>, Vec<_>) = User::default_rights_setup(&auth_user.id).into_iter().unzip();
+    state
+        .user_profile
+        .delete(user_id, &payload.password)
+        .await?;
+    state.perms.cleanup_deleted_resource(&resource).await?;
 
-        role.remove_rights(&k).await?;
-        return Ok(clear_session_cookies(jar, &state));
-    }
-
-    Err(AppError::Forbidden(format!(
-        "{} has not the needed right",
-        user_id
-    )))
+    Ok(clear_session_cookies(jar, &state))
 }
-
-///////////////////
 
 ///////////////////
 // INSTANCE
 ///////////////////
 
-/// Handler для создания instance
-/// Ключ Права: instance.method.create
+/// Ключ Права: instance.create
 async fn create_instance(
     State(state): State<Arc<AppState>>,
     auth_user: AuthenticatedUser,
@@ -281,92 +461,130 @@ async fn create_instance(
 ) -> AppResult<http::StatusCode> {
     let user_id = auth_user.id;
 
-    // access checking
-    let is_available =
-        check_available(state.clone(), user_id, RightKey::CREATE_INSTANCE_KEY).await?;
+    state
+        .perms
+        .require_action(
+            user_id.into(),
+            &ResourceType::try_from("instance")?,
+            ResourceAction::Create,
+            &ContextSet::empty(),
+        )
+        .await?;
+    let share_with: Vec<ShareTarget> = payload
+        .share_with
+        .iter()
+        .cloned()
+        .map(ShareTargetRequest::into_domain)
+        .collect::<Result<_, _>>()?;
 
-    if is_available {
-        // action
-        let instance_id = &state.instance.create_instance(payload).await?.id;
-        let (k, v): (Vec<_>, Vec<_>) = Instance::default_rights_setup(instance_id).into_iter().unzip();
+    let instance = state.instance.create(payload.try_into()?).await?;
 
-        let role = state.role.write().await;
-        role.add_rights(&k, &v).await?;
-        return Ok(http::StatusCode::OK);
-    }
-    Err(AppError::Forbidden(format!(
-        "{} has not the needed right",
-        user_id
-    )))
+    state
+        .perms
+        .register_created_resource(user_id.into(), &instance.resource_ref()?, &share_with)
+        .await?;
+
+    Ok(http::StatusCode::CREATED)
 }
 
-/// Handler для получения информации о instance, если доступен по правам
-/// Ключ Права: instance.<ConfigurationId>.get
+/// Ключ Права: instance.get
 async fn get_instance(
     Path(instance_id): Path<Uuid>,
     State(state): State<Arc<AppState>>,
     auth_user: AuthenticatedUser,
 ) -> AppResult<Json<GetInstanceResponse>> {
     let user_id = auth_user.id;
-    let instance_id = &InstanceId::from(instance_id);
-    // access checking
-    let is_available = check_available(
-        state.clone(),
-        user_id,
-        RightKey::get_instance_key(instance_id),
-    )
+    let instance_id = InstanceId::from(instance_id);
+
+    let instance = state.instance.get(instance_id).await?;
+    let resource = instance.resource_ref()?;
+
+    state
+        .perms
+        .require_resource_access(
+            user_id.into(),
+            &resource,
+            ResourceAction::Get,
+            instance.is_public,
+            &ContextSet::empty(),
+        )
         .await?;
-    // action
-    todo!()
+
+    Ok(Json(instance.into()))
 }
 
-/// Handler для получения информации о instances, доступных по праву get
-/// Ключ Права: instance.method.list
+/// Ключ Права: instance.list
 async fn list_instance(
     State(state): State<Arc<AppState>>,
     auth_user: AuthenticatedUser,
 ) -> AppResult<Json<Vec<GetInstanceResponse>>> {
     let user_id = auth_user.id;
 
-    // access checking
-    let is_available = check_available(state.clone(), user_id, RightKey::LIST_INSTANCE_KEY).await?;
-    if is_available {
-        // action
-        let role = state.role.read().await;
-        let ids = role.instance_list(&auth_user.roles).await?;
-        let configs = state.instance.list_instances(&ids).await?;
+    state
+        .perms
+        .require_action(
+            user_id.into(),
+            &ResourceType::try_from("instance")?,
+            ResourceAction::List,
+            &ContextSet::empty(),
+        )
+        .await?;
 
-        return Ok(Json(configs));
+    let all = state.instance.list().await?;
+
+    let mut visible = Vec::new();
+    for instance in all {
+        let resource = instance.resource_ref()?;
+        if state
+            .perms
+            .can_access_resource(
+                user_id.into(),
+                &resource,
+                ResourceAction::Get,
+                instance.is_public,
+                &ContextSet::empty(),
+            )
+            .await
+        {
+            visible.push(instance.into());
+        }
     }
-    Err(AppError::Forbidden(format!(
-        "{} has not the needed right",
-        user_id
-    )))
+
+    Ok(Json(visible))
 }
 
-/// Handler для изменения информации о instance
-/// Ключ Права: instance.<InstanceId>.update
+/// Ключ Права: instance.update
 async fn update_instance(
     Path(instance_id): Path<Uuid>,
     State(state): State<Arc<AppState>>,
     auth_user: AuthenticatedUser,
-    Json(payload): Json<UpdateInstanceResponse>,
+    Json(payload): Json<UpdateInstanceRequest>,
 ) -> AppResult<Json<GetInstanceResponse>> {
     let user_id = auth_user.id;
-    let instance_id = &InstanceId::from(instance_id);
-    // access checking
-    let is_available = check_available(
-        state.clone(),
-        user_id,
-        RightKey::update_instance_key(instance_id),
-    )
+    let instance_id = InstanceId::from(instance_id);
+
+    let instance = state.instance.get(instance_id).await?;
+    let resource = instance.resource_ref()?;
+
+    state
+        .perms
+        .require_resource_access(
+            user_id.into(),
+            &resource,
+            ResourceAction::Update,
+            instance.is_public,
+            &ContextSet::empty(),
+        )
         .await?;
-    // action
-    todo!()
+
+    let updated = state
+        .instance
+        .update(instance_id, payload.try_into()?)
+        .await?;
+    Ok(Json(updated.into()))
 }
 
-/// Handler для удаления instance
-/// Ключ Права: instance.<InstanceId>.delete
+/// Ключ Права: instance.delete
 async fn delete_instance(
     Path(instance_id): Path<Uuid>,
     State(state): State<Arc<AppState>>,
@@ -374,39 +592,32 @@ async fn delete_instance(
 ) -> AppResult<http::StatusCode> {
     let user_id = auth_user.id;
     let instance_id = InstanceId::from(instance_id);
-    // access checking
-    let is_available = check_available(
-        state.clone(),
-        user_id,
-        RightKey::delete_instance_key(&instance_id),
-    )
+
+    let instance = state.instance.get(instance_id).await?;
+    let resource = instance.resource_ref()?;
+
+    state
+        .perms
+        .require_resource_access(
+            user_id.into(),
+            &resource,
+            ResourceAction::Delete,
+            instance.is_public,
+            &ContextSet::empty(),
+        )
         .await?;
-    if is_available {
-        // action
-        let instance = state
-            .instance
-            .delete_instance(instance_id)
-            .await?;
-        let (k, _): (Vec<_>, Vec<_>) = Instance::default_rights_setup(&instance.id).into_iter().unzip();
 
-        let role = state.role.write().await;
-        role.remove_rights(&k).await?;
-        return Ok(http::StatusCode::OK);
-    }
-    Err(AppError::Forbidden(format!(
-        "{} has not the needed right",
-        user_id
-    )))
+    state.instance.delete(instance_id).await?;
+    state.perms.cleanup_deleted_resource(&resource).await?;
+
+    Ok(http::StatusCode::NO_CONTENT)
 }
-
-///////////////////
 
 ///////////////////
 // CONFIGURATION
 ///////////////////
 
-/// Handler для создания configuration
-/// Ключ Права: configuration.method.create
+/// Ключ Права: configuration.create
 async fn create_configuration(
     State(state): State<Arc<AppState>>,
     auth_user: AuthenticatedUser,
@@ -414,26 +625,33 @@ async fn create_configuration(
 ) -> AppResult<http::StatusCode> {
     let user_id = auth_user.id;
 
-    // access checking
-    let is_available =
-        check_available(state.clone(), user_id, RightKey::CREATE_CONFIGURATION_KEY).await?;
-    if is_available {
-        // action
-        let config_id = &state.config.create_configuration(payload).await?.id;
-        let (k, v): (Vec<_>, Vec<_>) = Configuration::default_rights_setup(config_id).into_iter().unzip();
+    state
+        .perms
+        .require_action(
+            user_id.into(),
+            &ResourceType::try_from("configuration")?,
+            ResourceAction::Create,
+            &ContextSet::empty(),
+        )
+        .await?;
 
-        let role = state.role.write().await;
-        role.add_rights(&k, &v).await?;
-        return Ok(http::StatusCode::OK);
-    }
-    Err(AppError::Forbidden(format!(
-        "{} has not the needed right",
-        user_id
-    )))
+    let share_with: Vec<ShareTarget> = payload
+        .share_with
+        .iter()
+        .cloned()
+        .map(ShareTargetRequest::into_domain)
+        .collect::<Result<_, _>>()?;
+    let config = state.config.create(payload.try_into()?).await?;
+
+    state
+        .perms
+        .register_created_resource(user_id.into(), &config.resource_ref()?, &share_with)
+        .await?;
+
+    Ok(http::StatusCode::CREATED)
 }
 
-/// Handler для получения информации о configuration
-/// Ключ Права: configuration.<ConfigurationId>.get
+/// Ключ Права: configuration.get
 async fn get_configuration(
     Path(config_id): Path<Uuid>,
     State(state): State<Arc<AppState>>,
@@ -441,51 +659,68 @@ async fn get_configuration(
 ) -> AppResult<Json<GetConfigurationResponse>> {
     let user_id = auth_user.id;
     let config_id = ConfigurationId::from(config_id);
-    // access checking
-    let is_available = check_available(
-        state.clone(),
-        user_id,
-        RightKey::get_configuration_key(&config_id),
-    )
+
+    let config = state.config.get(config_id).await?;
+    let resource = config.resource_ref()?;
+
+    state
+        .perms
+        .require_resource_access(
+            user_id.into(),
+            &resource,
+            ResourceAction::Get,
+            config.is_public,
+            &ContextSet::empty(),
+        )
         .await?;
-    if is_available {
-        // action
-        let config = state.config.get_config(config_id).await?;
-        return Ok(Json(config));
-    }
-    Err(AppError::Forbidden(format!(
-        "{} has not the needed right",
-        user_id
-    )))
+
+    Ok(Json(config.into()))
 }
 
-/// Handler для получения информации о configurations, доступных по праву get
-/// Ключ Права: configuration.<InstanceId>.list
+/// Ключ Права: instance.configurations.list
 async fn list_configuration(
+    Path(instance_id): Path<Uuid>,
     State(state): State<Arc<AppState>>,
     auth_user: AuthenticatedUser,
 ) -> AppResult<Json<Vec<GetConfigurationResponse>>> {
     let user_id = auth_user.id;
+    let instance_id = InstanceId::from(instance_id);
 
-    // access checking
-    let is_available =
-        check_available(state.clone(), user_id, RightKey::LIST_CONFIGURATION_KEY).await?;
-    if is_available {
-        // action
-        let role = state.role.read().await;
-        let ids = role.configuration_list(&auth_user.roles).await?;
-        let configs = state.config.list_configs(&ids).await?;
+    state
+        .perms
+        .require_action(
+            user_id.into(),
+            &ResourceType::try_from("instance.configurations")?,
+            ResourceAction::List,
+            &ContextSet::empty(),
+        )
+        .await?;
 
-        return Ok(Json(configs));
+    let all = state.config.list_for_instance(instance_id).await?;
+
+    let mut visible = Vec::new();
+
+    for config in all {
+        let resource = config.resource_ref()?;
+        if state
+            .perms
+            .can_access_resource(
+                user_id.into(),
+                &resource,
+                ResourceAction::Get,
+                config.is_public,
+                &ContextSet::empty(),
+            )
+            .await
+        {
+            visible.push(config.into());
+        }
     }
-    Err(AppError::Forbidden(format!(
-        "{} has not the needed right",
-        user_id
-    )))
+
+    Ok(Json(visible))
 }
 
-/// Handler для изменения информации о configuration
-/// Ключ Права: configuration.<ConfigurationId>.update
+/// Ключ Права: configuration.update
 async fn update_configuration(
     Path(config_id): Path<Uuid>,
     State(state): State<Arc<AppState>>,
@@ -494,19 +729,26 @@ async fn update_configuration(
 ) -> AppResult<Json<GetConfigurationResponse>> {
     let user_id = auth_user.id;
     let config_id = ConfigurationId::from(config_id);
-    // access checking
-    let is_available = check_available(
-        state.clone(),
-        user_id,
-        RightKey::update_configuration_key(&config_id),
-    )
+
+    let config = state.config.get(config_id).await?;
+    let resource = config.resource_ref()?;
+
+    state
+        .perms
+        .require_resource_access(
+            user_id.into(),
+            &resource,
+            ResourceAction::Update,
+            config.is_public,
+            &ContextSet::empty(),
+        )
         .await?;
-    // action
-    todo!()
+
+    let updated = state.config.update(config_id, payload.try_into()?).await?;
+    Ok(Json(updated.into()))
 }
 
-/// Handler для удаления configuration
-/// Ключ Права: configuration.<ConfigurationId>.delete
+/// Ключ Права: configuration.delete
 async fn delete_configuration(
     Path(config_id): Path<Uuid>,
     State(state): State<Arc<AppState>>,
@@ -514,29 +756,28 @@ async fn delete_configuration(
 ) -> AppResult<http::StatusCode> {
     let user_id = auth_user.id;
     let config_id = ConfigurationId::from(config_id);
-    // access checking
-    let is_available = check_available(
-        state.clone(),
-        user_id,
-        RightKey::delete_configuration_key(&config_id),
-    )
-        .await?;
-    if is_available {
-        // action
-        let (k, _): (Vec<_>, Vec<_>) = Configuration::default_rights_setup(&config_id).into_iter().unzip();
 
-        let role = state.role.write().await;
-        role.remove_rights(&k).await?;
-        return Ok(http::StatusCode::OK);
-    }
-    Err(AppError::Forbidden(format!(
-        "{} has not the needed right",
-        user_id
-    )))
+    let config = state.config.get(config_id).await?;
+    let resource = config.resource_ref()?;
+
+    state
+        .perms
+        .require_resource_access(
+            user_id.into(),
+            &resource,
+            ResourceAction::Delete,
+            config.is_public,
+            &ContextSet::empty(),
+        )
+        .await?;
+
+    state.config.delete(config_id).await?;
+    state.perms.cleanup_deleted_resource(&resource).await?;
+
+    Ok(http::StatusCode::NO_CONTENT)
 }
 
-/// Handler для скачивания файлов из определённой конфигурации
-/// Ключ Права: configuration.<ConfigurationId>.download
+/// Ключ Права: configuration.download
 async fn download_file_handler(
     Path((config_id, filepath)): Path<(Uuid, PathBuf)>,
     headers: http::HeaderMap,
@@ -545,34 +786,29 @@ async fn download_file_handler(
 ) -> AppResult<http::Response<Body>> {
     let user_id = auth_user.id;
     let config_id = ConfigurationId::from(config_id);
-    // access checking
-    let is_available = check_available(
-        state.clone(),
-        user_id,
-        RightKey::download_configuration_key(&config_id),
-    )
-        .await?;
-    // action
-    if is_available {
-        return state
-            .file
-            .stream_file(config_id.into(), &filepath, &headers)
-            .await;
-    }
-    Err(AppError::Forbidden(format!(
-        "{} has not the needed right",
-        user_id
-    )))
-}
 
-///////////////////
+    let config = state.config.get(config_id).await?;
+    let resource = config.resource_ref()?;
+
+    state
+        .perms
+        .require_resource_access(
+            user_id.into(),
+            &resource,
+            ResourceAction::Download,
+            config.is_public,
+            &ContextSet::empty(),
+        )
+        .await?;
+
+    state.file.stream_file(config_id, &filepath, &headers).await
+}
 
 ///////////////////
 // SETTINGS
 ///////////////////
 
-/// Handler для настройки пути папки с instances на сервере
-/// Ключ Права: settings.instance_path.set
+/// Ключ Права: settings.instance_path.update
 async fn set_instance_path(
     State(state): State<Arc<AppState>>,
     auth_user: AuthenticatedUser,
@@ -580,197 +816,478 @@ async fn set_instance_path(
 ) -> AppResult<http::StatusCode> {
     let user_id = auth_user.id;
 
-    // access checking
-    let is_available = check_available(
-        state.clone(),
-        user_id,
-        RightKey::SETTINGS_INSTANCE_PATH_SET_KEY,
-    )
+    state
+        .perms
+        .require_action(
+            user_id.into(),
+            &ResourceType::try_from("settings.instance_path")?,
+            ResourceAction::Update,
+            &ContextSet::empty(),
+        )
         .await?;
 
-    if is_available {
-        state.settings.add_instance_path(&request.path).await?;
-        return Ok(http::StatusCode::OK);
-    }
-
-    Err(AppError::Forbidden(format!(
-        "{} has not the needed right",
-        user_id
-    )))
+    state.settings.set_instance_path(&request.path).await?;
+    Ok(http::StatusCode::OK)
 }
 
-/// Handler для настройки пути папки с instances на сервере
-/// Ключ Права: settings.instance_path.remove
+/// Ключ Права: settings.instance_path.delete
 async fn remove_instance_path(
     State(state): State<Arc<AppState>>,
     auth_user: AuthenticatedUser,
 ) -> AppResult<http::StatusCode> {
     let user_id = auth_user.id;
 
-    // access checking
-    let is_available = check_available(
-        state.clone(),
-        user_id,
-        RightKey::SETTINGS_INSTANCE_PATH_REMOVE_KEY,
-    )
-        .await?;
-
-    if is_available {
-        state.settings.remove_instance_path().await?;
-        return Ok(http::StatusCode::OK);
-    }
-
-    Err(AppError::Forbidden(format!(
-        "{} has not the needed right",
-        user_id
-    )))
-}
-
-///////////////////
-
-///////////////////
-// ROLES
-///////////////////
-/// Handler для создания новой роли
-/// Ключ Права: role.method.create
-async fn create_role(
-    State(state): State<Arc<AppState>>,
-    auth_user: AuthenticatedUser,
-    Json(payload): Json<NewRoleRequest>,
-) -> AppResult<http::StatusCode> {
-    let user_id = auth_user.id;
-
-    // access checking
-    let is_available = check_available(state.clone(), user_id, RightKey::CREATE_ROLE_KEY).await?;
-
-    // action
-    if is_available {
-        let mut role = state.role.write().await;
-        let rid = &role.create_role(&payload.name).await?;
-        let (k, v): (Vec<_>, Vec<_>) = Role::default_rights_setup(rid).into_iter().unzip();
-
-        role.add_rights(&k, &v).await?;
-        return Ok(http::StatusCode::CREATED);
-    }
-
-    Err(AppError::Forbidden(format!(
-        "{} has not the needed right",
-        user_id
-    )))
-}
-
-async fn update_role(
-    State(state): State<Arc<AppState>>,
-    Path(role_id): Path<usize>,
-    auth_user: AuthenticatedUser,
-    Json(payload): Json<UpdateRoleRequest>,
-) -> AppResult<http::StatusCode> {
-    let user_id = auth_user.id;
-    let role_id = RoleId::from(role_id);
-    // access checking
-    let is_available = check_available(
-        state.clone(),
-        user_id,
-        RightKey::update_role(&role_id),
-    )
-        .await?;
-
-    // action
-    if is_available {
-        let mut role = state.role.write().await;
-        let update: UpdateRole = payload.into();
-        role.update_role(
-            role_id,
-            &update.allow_keys,
-            &update.remove_keys,
+    state
+        .perms
+        .require_action(
+            user_id.into(),
+            &ResourceType::try_from("settings.instance_path")?,
+            ResourceAction::Delete,
+            &ContextSet::empty(),
         )
-            .await?;
-        return Ok(http::StatusCode::OK);
-    }
-
-    Err(AppError::Forbidden(format!(
-        "{} has not the needed right",
-        user_id
-    )))
-}
-
-async fn get_role(
-    State(state): State<Arc<AppState>>,
-    Path(role_id): Path<usize>,
-    auth_user: AuthenticatedUser,
-) -> AppResult<Json<GetRoleResponse>> {
-    let user_id = auth_user.id;
-    let role_id = RoleId::from(role_id);
-    // access checking
-    let is_available = check_available(
-        state.clone(),
-        user_id,
-        RightKey::get_role(&role_id),
-    )
         .await?;
-    // action
-    if is_available {
-        let role = state.role.read().await;
-        return Ok(Json(role.get_role_info(role_id)?));
-    }
-    Err(AppError::Forbidden(format!(
-        "{} has not the needed right",
-        user_id
-    )))
+
+    state.settings.remove_instance_path().await?;
+    Ok(http::StatusCode::OK)
 }
 
-async fn list_roles(
+///////////////////
+// GROUPS
+///////////////////
+
+/// Ключ Права: group.create
+/// Вес новой группы не может быть >= веса создателя — иначе writer с правом
+/// group.create мог бы создать себе группу тяжелее admin.
+async fn create_group(
     State(state): State<Arc<AppState>>,
     auth_user: AuthenticatedUser,
-) -> AppResult<Json<Vec<GetRoleResponse>>> {
+    Json(payload): Json<NewGroupRequest>,
+) -> AppResult<http::StatusCode> {
     let user_id = auth_user.id;
 
-    // access checking
-    let is_available = check_available(state.clone(), user_id, RightKey::LIST_ROLES_KEY).await?;
-    // action
-    if is_available {
-        let role = state.role.read().await;
-        return Ok(Json(role.list_role()?));
-    }
-    Err(AppError::Forbidden(format!(
-        "{} has not the needed right",
-        user_id
-    )))
+    state
+        .perms
+        .require_action(
+            user_id.into(),
+            &ResourceType::try_from("group")?,
+            ResourceAction::Create,
+            &ContextSet::empty(),
+        )
+        .await?;
+
+    let name = parse_group_name(&payload.name)?;
+    let weight = GroupWeight::new(payload.weight)?;
+
+    require_actor_outweighs(&state, user_id.into(), weight, "create").await?;
+
+    state.perms_admin.create_group(&name, weight).await?;
+
+    Ok(http::StatusCode::CREATED)
 }
-async fn delete_role(
+
+/// Ключ Права: group.delete
+async fn delete_group(
     State(state): State<Arc<AppState>>,
-    Path(role_id): Path<usize>,
+    Path(group_name): Path<String>,
     auth_user: AuthenticatedUser,
 ) -> AppResult<http::StatusCode> {
     let user_id = auth_user.id;
-    let role_id = RoleId::from(role_id);
-    // access checking
-    let is_available = check_available(
-        state.clone(),
-        user_id,
-        RightKey::delete_role(&role_id),
-    )
+
+    state
+        .perms
+        .require_action(
+            user_id.into(),
+            &ResourceType::try_from("group")?,
+            ResourceAction::Delete,
+            &ContextSet::empty(),
+        )
         .await?;
 
-    if is_available {
-        // action
-        let mut role = state.role.write().await;
-        role.remove_role(role_id)?;
-        let (k, _): (Vec<_>, Vec<_>) = Role::default_rights_setup(&role_id).into_iter().unzip();
+    let name = parse_group_name(&group_name)?;
+    require_actor_outweighs_group(&state, user_id.into(), &name, "delete").await?;
+    state.perms_admin.delete_group(&name).await?;
 
-        role.remove_rights(&k).await?;
-        return Ok(http::StatusCode::OK);
+    Ok(http::StatusCode::NO_CONTENT)
+}
+
+/// Ключ Права: group.weight.update
+async fn update_group_weight(
+    State(state): State<Arc<AppState>>,
+    Path(group_name): Path<String>,
+    auth_user: AuthenticatedUser,
+    Json(payload): Json<UpdateGroupWeightRequest>,
+) -> AppResult<http::StatusCode> {
+    let user_id = auth_user.id;
+
+    state
+        .perms
+        .require_action(
+            user_id.into(),
+            &ResourceType::try_from("group.weight")?,
+            ResourceAction::Update,
+            &ContextSet::empty(),
+        )
+        .await?;
+
+    let name = parse_group_name(&group_name)?;
+    let weight = GroupWeight::new(payload.weight)?;
+    require_actor_outweighs(&state, user_id.into(), weight, "assign").await?;
+    state.perms_admin.update_group_weight(&name, weight).await?;
+
+    Ok(http::StatusCode::OK)
+}
+
+/// Ключ Права: group.permissions.update
+async fn update_group_permissions(
+    State(state): State<Arc<AppState>>,
+    Path(group_name): Path<String>,
+    auth_user: AuthenticatedUser,
+    Json(payload): Json<UpdateGroupPermissionsRequest>,
+) -> AppResult<http::StatusCode> {
+    let user_id = auth_user.id;
+
+    state
+        .perms
+        .require_action(
+            user_id.into(),
+            &ResourceType::try_from("group.permissions")?,
+            ResourceAction::Update,
+            &ContextSet::empty(),
+        )
+        .await?;
+
+    let name = parse_group_name(&group_name)?;
+    require_actor_outweighs_group(&state, user_id.into(), &name, "modify permissions of").await?;
+
+    // защита от эскалации: actor не может выдать группе право, которым
+    // сам не обладает — иначе group.permissions.update само по себе
+    // становится обходом всей RBAC-модели
+    for grant in &payload.grant {
+        if grant.allow {
+            let key = parse_permission_key(&grant.key)?;
+            let has_it = state
+                .perms
+                .service()
+                .check(user_id.into(), &key, &ContextSet::empty())
+                .await;
+            if !has_it {
+                return Err(AppError::Forbidden(format!(
+                    "cannot grant permission '{}' you do not hold yourself",
+                    grant.key
+                )));
+            }
+        }
     }
-    Err(AppError::Forbidden(format!(
-        "{} has not the needed right",
-        user_id
-    )))
+
+    for grant in payload.grant {
+        let key = parse_permission_key(&grant.key)?;
+        let value = NodeValue::from(grant.allow);
+        state
+            .perms_admin
+            .set_group_permission(&name, &key, value, &ContextSet::empty())
+            .await?;
+    }
+
+    for raw_key in payload.revoke {
+        let key = parse_permission_key(&raw_key)?;
+        state
+            .perms_admin
+            .revoke_group_permission(&name, &key)
+            .await?;
+    }
+
+    Ok(http::StatusCode::OK)
+}
+
+/// Ключ Права: group.parents.update
+async fn add_group_parent(
+    State(state): State<Arc<AppState>>,
+    Path(group_name): Path<String>,
+    auth_user: AuthenticatedUser,
+    Json(payload): Json<AddGroupParentRequest>,
+) -> AppResult<http::StatusCode> {
+    let user_id = auth_user.id;
+
+    state
+        .perms
+        .require_action(
+            user_id.into(),
+            &ResourceType::try_from("group.parents")?,
+            ResourceAction::Update,
+            &ContextSet::empty(),
+        )
+        .await?;
+
+    let group = parse_group_name(&group_name)?;
+    let parent = parse_group_name(&payload.parent)?;
+    require_actor_outweighs_group(&state, user_id.into(), &group, "modify inheritance of").await?;
+    require_actor_outweighs_group(&state, user_id.into(), &parent, "attach as parent").await?;
+    state
+        .perms_admin
+        .add_group_parent(&group, &parent, &ContextSet::empty())
+        .await?;
+
+    Ok(http::StatusCode::OK)
+}
+
+/// Ключ Права: group.parents.update
+async fn remove_group_parent(
+    State(state): State<Arc<AppState>>,
+    Path((group_name, parent_name)): Path<(String, String)>,
+    auth_user: AuthenticatedUser,
+) -> AppResult<http::StatusCode> {
+    let user_id = auth_user.id;
+
+    state
+        .perms
+        .require_action(
+            user_id.into(),
+            &ResourceType::try_from("group.parents")?,
+            ResourceAction::Update,
+            &ContextSet::empty(),
+        )
+        .await?;
+
+    let group = parse_group_name(&group_name)?;
+    let parent = parse_group_name(&parent_name)?;
+    require_actor_outweighs_group(&state, user_id.into(), &group, "modify inheritance of").await?;
+    state
+        .perms_admin
+        .remove_group_parent(&group, &parent)
+        .await?;
+
+    Ok(http::StatusCode::OK)
+}
+
+/// Ключ Права: group.members.create
+async fn add_group_member(
+    State(state): State<Arc<AppState>>,
+    Path(group_name): Path<String>,
+    auth_user: AuthenticatedUser,
+    Json(payload): Json<AddGroupMemberRequest>,
+) -> AppResult<http::StatusCode> {
+    let user_id = auth_user.id;
+
+    state
+        .perms
+        .require_action(
+            user_id.into(),
+            &ResourceType::try_from("group.members")?,
+            ResourceAction::Create,
+            &ContextSet::empty(),
+        )
+        .await?;
+
+    let name = parse_group_name(&group_name)?;
+    let target_user_id = payload.user_id.into();
+
+    // ранг: actor должен быть выше самого target-пользователя
+    require_outranks(
+        state.perms.service().store().as_ref(),
+        user_id.into(),
+        target_user_id,
+    )
+    .await?;
+
+    // вес: actor не может выдать группу тяжелее или равную своей — иначе
+    // добавление в группу становится обходным способом самоповышения
+    require_actor_outweighs_group(&state, user_id.into(), &name, "grant").await?;
+
+    let expires_at = payload.expires_at.map(NodeExpiry::new);
+    state
+        .perms_admin
+        .add_user_to_group(target_user_id, &name, &ContextSet::empty(), expires_at)
+        .await?;
+
+    Ok(http::StatusCode::CREATED)
+}
+
+/// Ключ Права: group.members.delete
+async fn remove_group_member(
+    State(state): State<Arc<AppState>>,
+    Path((group_name, target_user_id)): Path<(String, Uuid)>,
+    auth_user: AuthenticatedUser,
+) -> AppResult<http::StatusCode> {
+    let user_id = auth_user.id;
+
+    state
+        .perms
+        .require_action(
+            user_id.into(),
+            &ResourceType::try_from("group.members")?,
+            ResourceAction::Delete,
+            &ContextSet::empty(),
+        )
+        .await?;
+
+    let name = parse_group_name(&group_name)?;
+    let target_user_id = target_user_id.into();
+
+    require_outranks(
+        state.perms.service().store().as_ref(),
+        user_id.into(),
+        target_user_id,
+    )
+    .await?;
+    require_actor_outweighs_group(&state, user_id.into(), &name, "revoke").await?;
+
+    state
+        .perms_admin
+        .remove_user_from_group(target_user_id, &name)
+        .await?;
+
+    Ok(http::StatusCode::NO_CONTENT)
+}
+///////////////////
+
+///////////////////
+// GROUPS — read path через GroupDirectory
+///////////////////
+/// Ключ Права: group.list
+async fn list_groups(
+    State(state): State<Arc<AppState>>,
+    auth_user: AuthenticatedUser,
+    Query(query): Query<ListGroupsQuery>,
+) -> AppResult<Json<Vec<GroupSummaryResponse>>> {
+    let user_id = auth_user.id;
+
+    state
+        .perms
+        .require_action(
+            user_id.into(),
+            &ResourceType::try_from("group")?,
+            ResourceAction::List,
+            &ContextSet::empty(),
+        )
+        .await?;
+
+    let groups = state
+        .group_read
+        .list_groups(GroupListQuery {
+            limit: query.limit,
+            offset: query.offset,
+        })
+        .await?;
+
+    Ok(Json(
+        groups
+            .into_iter()
+            .map(|g| GroupSummaryResponse {
+                name: g.name.as_str().to_string(),
+                weight: g.weight.get(),
+            })
+            .collect(),
+    ))
+}
+
+/// Ключ Права: group.get
+async fn get_group(
+    State(state): State<Arc<AppState>>,
+    Path(group_name): Path<String>,
+    auth_user: AuthenticatedUser,
+) -> AppResult<Json<GetGroupResponse>> {
+    let user_id = auth_user.id;
+
+    state
+        .perms
+        .require_action(
+            user_id.into(),
+            &ResourceType::try_from("group")?,
+            ResourceAction::Get,
+            &ContextSet::empty(),
+        )
+        .await?;
+
+    let name = parse_group_name(&group_name)?;
+
+    let details = state
+        .group_read
+        .get_group_details(&name)
+        .await?
+        .ok_or_else(|| AppError::NotFound(format!("group {group_name}")))?;
+
+    Ok(Json(GetGroupResponse {
+        name: details.summary.name.as_str().to_string(),
+        weight: details.summary.weight.get(),
+        permissions: details
+            .permissions
+            .iter()
+            .map(GroupPermissionResponse::from)
+            .collect(),
+        members: details.members.into_iter().map(Uuid::from).collect(),
+        parents: details
+            .parents
+            .into_iter()
+            .map(|p| p.as_str().to_string())
+            .collect(),
+    }))
 }
 ///////////////////
 
 ///////////////////
 // UTIL FUNCTIONS FOR API
 ///////////////////
+
+/// Проверяет, что вес группы `target` строго меньше веса самого тяжёлого
+/// ранга actor'а — общее правило для всех операций над существующей группой
+/// (delete, изменение веса/прав/наследования/участников): actor не должен
+/// мочь трогать группу тяжелее или равную себе.
+///
+/// `action` — что именно запрещено, для текста ошибки (например
+/// "delete", "modify permissions of", "modify inheritance of").
+async fn require_actor_outweighs_group(
+    state: &AppState,
+    user_id: PermsUserId,
+    target: &GroupName,
+    action: &str,
+) -> AppResult<()> {
+    let target_weight = state
+        .group_read
+        .get_group_details(target)
+        .await?
+        .ok_or_else(|| AppError::NotFound(format!("group {}", target.as_str())))?
+        .summary
+        .weight;
+
+    let actor_weight = state
+        .perms
+        .service()
+        .store()
+        .max_group_weight(user_id)
+        .await?;
+
+    if target_weight >= actor_weight {
+        return Err(AppError::Forbidden(format!(
+            "cannot {action} a group with weight equal to or higher than your own"
+        )));
+    }
+
+    Ok(())
+}
+
+/// То же самое, но когда сравниваемый вес уже на руках (создание группы,
+/// присвоение нового веса) — без похода в group_read за существующей записью.
+async fn require_actor_outweighs(
+    state: &AppState,
+    user_id: PermsUserId,
+    weight: GroupWeight,
+    action: &str,
+) -> AppResult<()> {
+    let actor_weight = state
+        .perms
+        .service()
+        .store()
+        .max_group_weight(user_id)
+        .await?;
+
+    if weight >= actor_weight {
+        return Err(AppError::Forbidden(format!(
+            "cannot {action} a group with weight equal to or higher than your own"
+        )));
+    }
+
+    Ok(())
+}
 
 fn with_session_cookies(
     jar: CookieJar,
@@ -814,45 +1331,10 @@ fn clear_session_cookies(jar: CookieJar, state: &AppState) -> CookieJar {
         .remove(refresh_token_id_cookie)
 }
 
-async fn check_available(
-    state: Arc<AppState>,
-    user_id: UserId,
-    key: RightKey<'static>,
-) -> AppResult<bool> {
-    let users_roles = state.user_profile.users_roles(user_id).await?;
-    let mut set = JoinSet::new();
+fn parse_group_name(raw: &str) -> AppResult<GroupName> {
+    Ok(GroupName::try_from(raw)?)
+}
 
-    for rid in users_roles {
-        // Клонируем Arc<AppState>, ключ и ID роли для ПЕРЕДАЧИ ВНУТРЬ таски
-        let state = Arc::clone(&state);
-        let key = key.clone();
-
-        set.spawn(async move {
-            // 2. Блокировку (read) берем ИНСАЙД асинхронной таски!
-            // Теперь guard ссылается на клонированный Arc, который живёт внутри таски.
-            let role = state.role.read().await;
-            role.is_available_action(&rid, &key).await
-        });
-    }
-
-    let mut is_available = false;
-
-    // 3. Собираем результаты
-    while let Some(res) = set.join_next().await {
-        // Если метод is_available_action возвращает Result<bool, Error>
-        if let Ok(Ok(true)) = res {
-            is_available = true;
-            set.abort_all(); // Отменяем оставшиеся таски
-            break;
-        }
-
-        // Если метод is_available_action возвращает просто bool (без Result):
-        // if let Ok(true) = res {
-        //     is_available = true;
-        //     set.abort_all();
-        //     break;
-        // }
-    }
-
-    Ok(is_available)
+fn parse_permission_key(raw: &str) -> AppResult<PermissionKey> {
+    Ok(PermissionKey::try_from(raw).map_err(PermissionError::from)?)
 }
