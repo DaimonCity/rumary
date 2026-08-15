@@ -1,7 +1,7 @@
 -- TotpRepository owns this table.
-CREATE TABLE user_totp
+CREATE TABLE IF NOT EXISTS user_totp
 (
-    user_id          UUID PRIMARY KEY REFERENCES users (user_id) ON DELETE CASCADE,
+    user_id          UUID PRIMARY KEY REFERENCES users(user_id) ON DELETE CASCADE,
     encrypted_secret TEXT        NOT NULL,
     step             BIGINT        NOT NULL DEFAULT 0,
     nonce            TEXT        NOT NULL,

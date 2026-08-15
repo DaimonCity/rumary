@@ -15,7 +15,6 @@ use rumary_dto::domain::api::value_object::url::IconUrl;
 use rumary_dto::domain::api::value_object::user::PasswordHash;
 use rumary_dto::domain::api::value_object::user::{Login, UserId};
 use rumary_dto::domain::api::value_object::version::Version;
-use rumary_dto::domain::api::{AccessLevel, RoleType};
 use rumary_dto::domain::api::{
     Configuration, Instance, Loader, NewConfiguration, NewInstance, NewTotpUser, NewUser,
     RefreshSessionUpdate, TotpUser, UpdateConfiguration, UpdateInstance, User, UserSession,
@@ -37,7 +36,6 @@ struct UserRow {
     login: String,
     nickname: String,
     password_hash: String,
-    access_level: i32,
     token_version: i32,
     is_public: bool,
 }
@@ -51,10 +49,6 @@ impl TryFrom<UserRow> for User {
             login: row.login.try_into()?,
             nickname: row.nickname.try_into()?,
             password_hash: PasswordHash::from_stored(row.password_hash),
-            access_level: AccessLevel {
-                role_type: RoleType::User,
-                level: row.access_level.clamp(0, u16::MAX as i32) as u16,
-            },
             token_version: row.token_version,
             is_public: row.is_public,
         })
@@ -185,9 +179,9 @@ impl UserRepository for PostgresRepo {
         let mut tx = self.pool.begin().await?;
         let row: UserRow = sqlx::query_as(
             r#"
-            INSERT INTO users (login, nickname, password_hash, access_level, is_public)
-            VALUES ($1, $2, $3, 0, false)
-            RETURNING user_id, login, nickname, password_hash, access_level, token_version, is_public
+            INSERT INTO users (login, nickname, password_hash, is_public)
+            VALUES ($1, $2, $3, false)
+            RETURNING user_id, login, nickname, password_hash, token_version, is_public
             "#,
         )
         .bind(String::from(user.login))
@@ -210,7 +204,7 @@ impl UserRepository for PostgresRepo {
 
     async fn find_user(&self, user_id: UserId) -> AppResult<Option<User>> {
         let row: Option<UserRow> = sqlx::query_as(
-            "SELECT user_id, login, nickname, password_hash, access_level, token_version, is_public FROM users WHERE user_id = $1",
+            "SELECT user_id, login, nickname, password_hash, token_version, is_public FROM users WHERE user_id = $1",
         )
         .bind(Uuid::from(user_id))
         .fetch_optional(&self.pool)
@@ -220,7 +214,7 @@ impl UserRepository for PostgresRepo {
 
     async fn find_user_by_login(&self, login: Login) -> AppResult<Option<User>> {
         let row: Option<UserRow> = sqlx::query_as(
-            "SELECT user_id, login, nickname, password_hash, access_level, token_version, is_public FROM users WHERE login = $1",
+            "SELECT user_id, login, nickname, password_hash, token_version, is_public FROM users WHERE login = $1",
         )
         .bind(login.as_str())
         .fetch_optional(&self.pool)
@@ -238,7 +232,7 @@ impl UserRepository for PostgresRepo {
 
     async fn list_users(&self) -> AppResult<Vec<User>> {
         let rows: Vec<UserRow> = sqlx::query_as(
-            "SELECT user_id, login, nickname, password_hash, access_level, token_version, is_public FROM users ORDER BY login",
+            "SELECT user_id, login, nickname, password_hash, token_version, is_public FROM users ORDER BY login",
         )
         .fetch_all(&self.pool)
         .await?;
@@ -260,7 +254,7 @@ impl TotpRepository for PostgresRepo {
                 nonce = EXCLUDED.nonce,
                 confirmed = false,
                 updated_at = now()
-            RETURNING user_id, encrypted_secret, nonce, confirmed
+            RETURNING user_id, encrypted_secret, nonce, confirmed, step
             "#,
         )
         .bind(user.user_id)
@@ -273,7 +267,7 @@ impl TotpRepository for PostgresRepo {
 
     async fn totp_user_enable(&self, user_id: UserId) -> AppResult<TotpUser> {
         let row: Option<TotpRow> = sqlx::query_as(
-            "UPDATE user_totp SET confirmed = true, updated_at = now() WHERE user_id = $1 RETURNING user_id, encrypted_secret, nonce, confirmed",
+            "UPDATE user_totp SET confirmed = true, updated_at = now() WHERE user_id = $1 RETURNING user_id, encrypted_secret, nonce, step, confirmed",
         )
         .bind(Uuid::from(user_id))
         .fetch_optional(&self.pool)
@@ -284,7 +278,7 @@ impl TotpRepository for PostgresRepo {
 
     async fn find_totp_user(&self, user_id: UserId) -> AppResult<Option<TotpUser>> {
         let row: Option<TotpRow> = sqlx::query_as(
-            "SELECT user_id, encrypted_secret, nonce, confirmed FROM user_totp WHERE user_id = $1",
+            "SELECT user_id, encrypted_secret, nonce, confirmed, step FROM user_totp WHERE user_id = $1",
         )
         .bind(Uuid::from(user_id))
         .fetch_optional(&self.pool)
@@ -294,7 +288,7 @@ impl TotpRepository for PostgresRepo {
 
     async fn totp_user_disable(&self, user_id: UserId) -> Result<Option<TotpUser>, Self::Error> {
         let row: Option<TotpRow> = sqlx::query_as(
-            "UPDATE user_totp SET confirmed = false, updated_at = now() WHERE user_id = $1 RETURNING user_id, encrypted_secret, nonce, confirmed",
+            "UPDATE user_totp SET confirmed = false, updated_at = now() WHERE user_id = $1 RETURNING user_id, encrypted_secret, nonce, step, confirmed",
         )
         .bind(Uuid::from(user_id))
         .fetch_optional(&self.pool)

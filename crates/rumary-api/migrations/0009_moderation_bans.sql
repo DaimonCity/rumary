@@ -1,5 +1,5 @@
 -- ModerationRepository owns this table.
-CREATE TABLE moderation_bans (
+CREATE TABLE IF NOT EXISTS  moderation_bans (
     id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     subject_type  TEXT NOT NULL CHECK (subject_type IN ('account', 'device', 'ip_cidr')),
     account_id    UUID REFERENCES users(user_id),
@@ -29,19 +29,19 @@ CREATE TABLE moderation_bans (
     )
 );
 
-CREATE INDEX idx_moderation_bans_active_account
+CREATE INDEX IF NOT EXISTS idx_moderation_bans_active_account
     ON moderation_bans(account_id, scope, starts_at, expires_at)
     WHERE subject_type = 'account' AND revoked_at IS NULL;
 
-CREATE INDEX idx_moderation_bans_account_history
+CREATE INDEX IF NOT EXISTS idx_moderation_bans_account_history
     ON moderation_bans(account_id, created_at DESC)
     WHERE subject_type = 'account';
 
-CREATE INDEX idx_moderation_bans_device
+CREATE INDEX IF NOT EXISTS idx_moderation_bans_device
     ON moderation_bans(subject_hash, starts_at, expires_at)
     WHERE subject_type = 'device' AND revoked_at IS NULL;
 
-CREATE INDEX idx_moderation_bans_ip
+CREATE INDEX IF NOT EXISTS idx_moderation_bans_ip
     ON moderation_bans USING gist(ip_network inet_ops)
     WHERE subject_type = 'ip_cidr' AND revoked_at IS NULL;
 

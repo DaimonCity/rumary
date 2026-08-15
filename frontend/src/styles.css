@@ -898,6 +898,104 @@ input:focus, select:focus, textarea:focus {
     padding: 18px 18px 0
 }
 
+.security-setting {
+    padding: 18px
+}
+
+.security-summary {
+    display: grid;
+    grid-template-columns:auto minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 18px
+}
+
+.security-summary strong, .totp-instructions > strong {
+    display: block;
+    font-size: 14px;
+    margin-bottom: 4px
+}
+
+.state-icon.neutral {
+    background: var(--surface-subtle);
+    color: var(--muted)
+}
+
+.totp-setup {
+    display: grid;
+    grid-template-columns:224px minmax(0, 1fr);
+    gap: 24px;
+    align-items: start;
+    padding-top: 18px;
+    border-top: 1px solid var(--line)
+}
+
+.qr-code {
+    width: 224px;
+    height: 224px;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    overflow: hidden;
+    background: #fff
+}
+
+.qr-code img {
+    display: block;
+    width: 100%;
+    height: 100%
+}
+
+.totp-instructions {
+    min-width: 0
+}
+
+.totp-instructions > .muted {
+    margin-bottom: 16px
+}
+
+.copy-field {
+    display: grid;
+    grid-template-columns:minmax(0, 1fr) 32px;
+    align-items: center;
+    gap: 6px
+}
+
+.copy-field code {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    padding: 9px 10px
+}
+
+.totp-form {
+    padding: 16px 0 0 !important
+}
+
+.totp-form label, .totp-disable label {
+    max-width: 220px
+}
+
+.security-actions, .totp-disable {
+    display: flex;
+    align-items: end;
+    gap: 8px;
+    flex-wrap: wrap
+}
+
+.totp-disable {
+    padding: 0 !important
+}
+
+.totp-disable label {
+    flex: 1 1 180px
+}
+
+.primary:disabled, .secondary:disabled {
+    opacity: .55;
+    cursor: not-allowed
+}
+
 .secondary {
     text-decoration: none
 }
@@ -991,6 +1089,10 @@ input:focus, select:focus, textarea:focus {
     }
 
     .request-line { grid-template-columns: 1fr; align-items: stretch; }
+
+    .totp-setup { grid-template-columns: 1fr; }
+
+    .qr-code { width: min(224px, 100%); height: auto; aspect-ratio: 1; }
 
     .detail-stats {
         grid-template-columns:repeat(3, 1fr)

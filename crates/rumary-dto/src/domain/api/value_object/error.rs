@@ -1,7 +1,7 @@
 use crate::domain::api::LoaderError;
 use crate::domain::api::value_object::name::{DescriptionError, DirectoryNameError, DisplayNameError};
 use crate::domain::api::value_object::url::IconUrlError;
-use crate::domain::api::value_object::user::{HashError, LoginError, NicknameError};
+use crate::domain::api::value_object::user::{PasswordHashError, LoginError, NicknameError};
 use crate::domain::api::value_object::version::VersionError;
 
 #[macro_export]
@@ -23,7 +23,7 @@ pub enum ValueObjectError {
     Nickname(NicknameError),
     LoaderError(LoaderError),
     Login(LoginError),
-    PasswordHash(HashError),
+    PasswordHash(PasswordHashError),
     Version(VersionError),
 }
 
@@ -34,7 +34,7 @@ err_from!(IconUrlError, ValueObjectError, IconUrl);
 err_from!(NicknameError, ValueObjectError, Nickname);
 err_from!(LoaderError, ValueObjectError, LoaderError);
 err_from!(LoginError, ValueObjectError, Login);
-err_from!(HashError, ValueObjectError, PasswordHash);
+err_from!(PasswordHashError, ValueObjectError, PasswordHash);
 err_from!(VersionError, ValueObjectError, Version);
 
 #[macro_export]

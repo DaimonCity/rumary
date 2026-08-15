@@ -77,8 +77,7 @@ pub trait UserProfileProvider: Send + Sync {
     type Error;
     async fn get(&self, user_id: UserId) -> Result<User, Self::Error>;
     
-    async fn delete(&self, user_id: UserId, password: &str)
-                    -> Result<(), Self::Error>;
+    async fn delete(&self, user_id: UserId) -> Result<(), Self::Error>;
 }
 
 #[async_trait]

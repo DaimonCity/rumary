@@ -1,6 +1,6 @@
 -- SessionRepository owns this table. Its current contract allows one active
 -- refresh session per user.
-CREATE TABLE user_sessions (
+CREATE TABLE IF NOT EXISTS  user_sessions (
     user_id            UUID PRIMARY KEY REFERENCES users(user_id) ON DELETE CASCADE,
     token_id           UUID NOT NULL UNIQUE,
     refresh_token_hash TEXT NOT NULL,
@@ -10,5 +10,6 @@ CREATE TABLE user_sessions (
     CHECK (refresh_token_hash <> '')
 );
 
-CREATE INDEX idx_user_sessions_expires_at ON user_sessions(expires_at);
+
+CREATE INDEX IF NOT EXISTS  idx_user_sessions_expires_at ON user_sessions(expires_at);
 

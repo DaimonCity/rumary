@@ -1,6 +1,6 @@
 -- ResourceAclStore owns this polymorphic ACL table. Resource identifiers are
 -- textual because one table protects several aggregate types.
-CREATE TABLE resource_access (
+CREATE TABLE IF NOT EXISTS resource_access (
     resource_type TEXT NOT NULL,
     resource_id   TEXT NOT NULL,
     holder_type   TEXT NOT NULL CHECK (holder_type IN ('user', 'role', 'min_weight')),

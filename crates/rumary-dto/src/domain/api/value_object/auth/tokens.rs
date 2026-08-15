@@ -1,4 +1,4 @@
-use crate::domain::api::value_object::user::HashError;
+use crate::domain::api::value_object::user::PasswordHashError;
 use bcrypt::{DEFAULT_COST, hash, verify};
 use std::fmt::Display;
 use uuid::Uuid;
@@ -28,13 +28,13 @@ impl From<Uuid> for TokenId {
 pub struct TokenHash(String);
 
 impl TokenHash {
-    pub fn new(token: String) -> Result<Self, HashError> {
-        let hash = hash(token, DEFAULT_COST).map_err(HashError::HashingFailed)?;
+    pub fn new(token: String) -> Result<Self, PasswordHashError> {
+        let hash = hash(token, DEFAULT_COST).map_err(PasswordHashError::HashingFailed)?;
         Ok(Self(hash))
     }
 
-    pub fn verify(&self, token: &str) -> Result<bool, HashError> {
-        verify(&self.0, token).map_err(HashError::VerifyingFailed)
+    pub fn verify(&self, token: &str) -> Result<bool, PasswordHashError> {
+        verify(&self.0, token).map_err(PasswordHashError::VerifyingFailed)
     }
 
     pub fn from_stored(value: String) -> Self {

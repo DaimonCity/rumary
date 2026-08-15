@@ -1,4 +1,3 @@
-use crate::domain::api::AccessLevel;
 use crate::domain::api::value_object::auth::tokens::{TokenHash, TokenId};
 use crate::domain::api::value_object::user::{Login, Nickname, PasswordHash, UserId};
 use chrono::{DateTime, Utc};
@@ -10,7 +9,6 @@ pub struct User {
     pub login: Login,
     pub nickname: Nickname,
     pub password_hash: PasswordHash,
-    pub access_level: AccessLevel,
     pub token_version: i32,
     pub is_public: bool,
 }

@@ -2,8 +2,7 @@ use crate::error::{AppError, AppResult};
 use crate::repo::repository::{TotpRepository, UserRepository};
 use crate::services::UserProfileProvider;
 use async_trait::async_trait;
-use bcrypt::verify;
-use rumary_dto::domain::api::{User};
+use rumary_dto::domain::api::User;
 use rumary_dto::domain::api::value_object::user::UserId;
 use std::sync::Arc;
 
@@ -41,15 +40,7 @@ impl UserProfileProvider for UserProfileService {
         Ok(user)
     }
 
-    async fn delete(&self, user_id: UserId, password: &str) -> AppResult<()> {
-        let user = self.get_user(user_id).await?;
-
-        let is_valid = verify(password, &user.password_hash)
-            .map_err(|_| AppError::Crypto("failed to verify password".to_string()))?;
-        if !is_valid {
-            return Err(AppError::Unauthorized("invalid password".to_string()));
-        }
-
+    async fn delete(&self, user_id: UserId) -> Result<(), Self::Error> {
         self.user_repo.delete_user(user_id).await
     }
 }

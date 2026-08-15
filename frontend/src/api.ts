@@ -1,4 +1,5 @@
 export type Profile = { login: string; nickname: string; has_totp: boolean };
+export type TotpSetup = { otp_auth_url: string };
 export type Capabilities = { permissions: string[] };
 export type Instance = {
     id: string;

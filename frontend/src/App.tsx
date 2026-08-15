@@ -1,5 +1,6 @@
 import React, {useEffect, useMemo, useState} from 'react';
 import {Navigate, NavLink, useLocation, useNavigate} from 'react-router-dom';
+import QRCode from 'qrcode';
 import {
     Activity,
     Boxes,
@@ -16,6 +17,7 @@ import {
     Moon,
     Plus,
     Play,
+    QrCode,
     ShieldBan,
     Settings,
     Sun,
@@ -36,7 +38,8 @@ import {
     Instance,
     json,
     Profile,
-    setAuthToken
+    setAuthToken,
+    TotpSetup
 } from './api';
 import {I18nContext, Locale, translate, useI18n} from './i18n';
 
@@ -764,10 +767,74 @@ function SettingsPage({permissions}: { permissions: ReadonlySet<string> }) {
         <ErrorAlert message={error} onClose={() => setError('')}/>}</Card></>
 }
 
-function Account({profile, onDeleted}: { profile: Profile; onDeleted: () => void }) {
+function Account({profile, onProfileChange, onDeleted}: {
+    profile: Profile;
+    onProfileChange: (profile: Profile) => void;
+    onDeleted: () => void
+}) {
     const {t} = useI18n();
-    const [error, setError] = useState('');
+    const [accountError, setAccountError] = useState('');
     const [password, setPassword] = useState('');
+    const [totpError, setTotpError] = useState('');
+    const [totpCode, setTotpCode] = useState('');
+    const [totpSetup, setTotpSetup] = useState<{ secret: string; qr: string } | null>(null);
+    const [totpBusy, setTotpBusy] = useState(false);
+    const [totpMessage, setTotpMessage] = useState('');
+    const startTotpSetup = async () => {
+        setTotpError('');
+        setTotpMessage('');
+        setTotpBusy(true);
+        try {
+            const setup = await api<TotpSetup>('/api/v1/2fa/enable', {method: 'POST'});
+            const qr = await QRCode.toDataURL(setup.otp_auth_url, {
+                width: 224,
+                margin: 1,
+                color: {dark: '#17221e', light: '#ffffff'}
+            });
+            const secret = new URL(setup.otp_auth_url).searchParams.get('secret') ?? setup.otp_auth_url;
+            setTotpCode('');
+            setTotpSetup({secret, qr});
+        } catch (e) {
+            setTotpSetup(null);
+            setTotpCode('');
+            setTotpError((e as Error).message);
+        } finally {
+            setTotpBusy(false);
+        }
+    };
+    const confirmTotp = async (e: React.FormEvent) => {
+        e.preventDefault();
+        setTotpError('');
+        setTotpBusy(true);
+        try {
+            await api('/api/v1/2fa/confirm', json({code: totpCode}));
+            onProfileChange({...profile, has_totp: true});
+            setTotpSetup(null);
+            setTotpCode('');
+            setTotpMessage('twoFactorEnabled');
+        } catch (e) {
+            setTotpSetup(null);
+            setTotpCode('');
+            setTotpError((e as Error).message);
+        } finally {
+            setTotpBusy(false);
+        }
+    };
+    const disableTotp = async (e: React.FormEvent) => {
+        e.preventDefault();
+        setTotpError('');
+        setTotpBusy(true);
+        try {
+            await api('/api/v1/2fa/disable', json({code: totpCode}, 'DELETE'));
+            onProfileChange({...profile, has_totp: false});
+            setTotpCode('');
+            setTotpMessage('twoFactorDisabled');
+        } catch (e) {
+            setTotpError((e as Error).message);
+        } finally {
+            setTotpBusy(false);
+        }
+    };
     const remove = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!window.confirm(t('deleteAccountConfirm'))) return;
@@ -776,7 +843,7 @@ function Account({profile, onDeleted}: { profile: Profile; onDeleted: () => void
             setAuthToken(null);
             onDeleted()
         } catch (e) {
-            setError((e as Error).message)
+            setAccountError((e as Error).message)
         }
     };
     return <><Title title="account" subtitle="profileAndSessionManagement"/><Card title="profile">
@@ -785,13 +852,45 @@ function Account({profile, onDeleted}: { profile: Profile; onDeleted: () => void
             <div><span>{t('nickname')}</span><b>{profile.nickname}</b></div>
             <div><span>2FA</span><b>{profile.has_totp ? t('enabled') : t('notConfigured')}</b></div>
         </div>
+    </Card><Card title="twoFactorAuthentication">
+        <div className="security-setting">
+            <div className="security-summary">
+                <div className={`state-icon ${profile.has_totp ? '' : 'neutral'}`}><QrCode size={21}/></div>
+                <div><strong>{t(profile.has_totp ? 'twoFactorIsEnabled' : 'protectAccountWith2fa')}</strong>
+                    <p className="muted">{t(profile.has_totp ? 'twoFactorEnabledDescription' : 'twoFactorSetupDescription')}</p></div>
+                <span className={`pill ${profile.has_totp ? 'green' : 'gray'}`}>{t(profile.has_totp ? 'enabled' : 'notConfigured')}</span>
+            </div>
+            {!profile.has_totp && !totpSetup && <button className="primary" type="button" disabled={totpBusy}
+                onClick={startTotpSetup}><QrCode size={15}/>{t('setUpTwoFactor')}</button>}
+            {!profile.has_totp && totpSetup && <div className="totp-setup">
+                <div className="qr-code"><img src={totpSetup.qr} alt={t('authenticatorQrCode')}/></div>
+                <div className="totp-instructions"><strong>{t('scanQrCode')}</strong><p className="muted">{t('scanQrCodeDescription')}</p>
+                    <label>{t('setupKey')}<div className="copy-field"><code>{totpSetup.secret}</code><button className="icon-btn" type="button"
+                        title={t('copy')} aria-label={t('copy')} onClick={() => navigator.clipboard?.writeText(totpSetup.secret)}><Copy size={15}/></button></div></label>
+                    <form className="totp-form" onSubmit={confirmTotp}><label>{t('totpCode')}<input autoFocus value={totpCode}
+                        onChange={e => setTotpCode(e.target.value.replace(/\D/g, '').slice(0, 6))} inputMode="numeric"
+                        autoComplete="one-time-code" pattern="[0-9]{6}" placeholder="000000" required/></label>
+                        <div className="security-actions"><button type="button" className="secondary" disabled={totpBusy} onClick={() => {
+                            setTotpSetup(null);
+                            setTotpCode('');
+                            setTotpError('');
+                        }}>{t('cancel')}</button><button className="primary" disabled={totpBusy || totpCode.length !== 6}>{t('confirmAndEnable')}</button></div>
+                    </form>
+                </div>
+            </div>}
+            {profile.has_totp && <form className="totp-disable" onSubmit={disableTotp}><label>{t('totpCode')}<input value={totpCode}
+                onChange={e => setTotpCode(e.target.value.replace(/\D/g, '').slice(0, 6))} inputMode="numeric" autoComplete="one-time-code"
+                pattern="[0-9]{6}" placeholder="000000" required/></label><button className="secondary danger" disabled={totpBusy || totpCode.length !== 6}><Trash2 size={15}/>{t('disableTwoFactor')}</button></form>}
+            {totpMessage && <div className="alert success">{t(totpMessage)}</div>}
+            {totpError && <ErrorAlert message={totpError} onClose={() => setTotpError('')}/>}
+        </div>
     </Card><Card title="deleteAccount"><p className="detail-copy muted">{t('deleteAccountWarning')}</p>
         <form className="inline-form" onSubmit={remove}><input type="password" value={password}
                                                                onChange={e => setPassword(e.target.value)}
                                                                placeholder={t('currentPassword')} required/>
             <button className="secondary danger"><Trash2 size={15}/>{t('deleteAccount')}</button>
         </form>
-        {error && <ErrorAlert message={error} onClose={() => setError('')}/>}</Card></>
+        {accountError && <ErrorAlert message={accountError} onClose={() => setAccountError('')}/>}</Card></>
 }
 
 type ApiRoute = { method: string; path: string; note: string };
@@ -802,6 +901,9 @@ const apiRoutes: ApiRoute[] = [
     {method: 'POST', path: '/api/v1/auth/login/totp', note: 'verify TOTP'},
     {method: 'POST', path: '/api/v1/auth/refresh', note: 'refresh session'},
     {method: 'POST', path: '/api/v1/auth/logout', note: 'logout'},
+    {method: 'POST', path: '/api/v1/2fa/enable', note: 'start TOTP setup'},
+    {method: 'POST', path: '/api/v1/2fa/confirm', note: 'confirm TOTP setup'},
+    {method: 'DELETE', path: '/api/v1/2fa/disable', note: 'disable TOTP'},
     {method: 'GET', path: '/api/v1/users/me', note: 'current profile'},
     {method: 'DELETE', path: '/api/v1/users/me', note: 'delete account'},
     {method: 'GET', path: '/api/v1/user/{user_id}', note: 'user profile'},
@@ -937,7 +1039,7 @@ export default function App() {
     let page: React.ReactNode = path.startsWith('/instances/') ? guard(canManageInstances, <InstanceDetail permissions={permissions}/>) : path === '/instances' ?
         guard(canManageInstances, <Instances permissions={permissions}/>) : path === '/configurations' ? guard(canManageConfigurations, <Configurations permissions={permissions}/>) : path === '/groups' ?
             guard(hasPermission(permissions, 'group.list'), <Groups permissions={permissions}/>) : path === '/moderation' ? guard(canModerate, <Moderation permissions={permissions}/>) : path === '/settings' ?
-                guard(canManageSettings, <SettingsPage permissions={permissions}/>) : path === '/account' ? <Account profile={profile} onDeleted={() => {
+                guard(canManageSettings, <SettingsPage permissions={permissions}/>) : path === '/account' ? <Account profile={profile} onProfileChange={setProfile} onDeleted={() => {
                         setProfile(null);
                         setPermissions(null);
                         nav('/')

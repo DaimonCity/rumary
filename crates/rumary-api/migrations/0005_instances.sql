@@ -1,5 +1,5 @@
 -- InstanceRepository owns this table.
-CREATE TABLE instances (
+CREATE TABLE IF NOT EXISTS  instances (
     id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     icon           TEXT,
     dir_name       TEXT NOT NULL UNIQUE,

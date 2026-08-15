@@ -18,6 +18,7 @@ use rumary_dto::domain::api::group::ListGroupsQuery;
 use rumary_dto::domain::api::share_target::ShareTarget;
 use rumary_dto::domain::api::value_object::configuration::ConfigurationId;
 use rumary_dto::domain::api::value_object::instance::InstanceId;
+use rumary_dto::domain::api::value_object::totp::TotpCode;
 use rumary_dto::domain::api::value_object::user::UserId as ApiUserId;
 use rumary_dto::domain::perms::value_object::expiration::NodeExpiry;
 use rumary_dto::domain::perms::value_object::group::{GroupName, GroupWeight};
@@ -27,6 +28,7 @@ use rumary_dto::domain::perms::value_object::user::UserId as PermsUserId;
 use rumary_dto::domain::perms::{ContextSet, GroupListQuery, NodeValue};
 use rumary_dto::dto::api::request::NewGroupRequest;
 use rumary_dto::dto::api::request::share_target::ShareTargetRequest;
+use rumary_dto::dto::api::request::totp::TotpCodeRequest;
 use rumary_dto::dto::api::request::{
     AddGroupMemberRequest, AddGroupParentRequest, CreateUserBanRequest, DeleteMeRequest,
     InstancePathRequest, LoginRequest, NewConfigurationRequest, NewInstanceRequest,
@@ -36,7 +38,7 @@ use rumary_dto::dto::api::request::{
 use rumary_dto::dto::api::response::group::{
     GetGroupResponse, GroupPermissionResponse, GroupSummaryResponse,
 };
-use rumary_dto::dto::api::response::{CapabilitiesResponse, ProfileResponse};
+use rumary_dto::dto::api::response::{CapabilitiesResponse, ProfileResponse, TotpSetupResponse};
 use rumary_dto::dto::api::response::{
     GetConfigurationResponse, GetInstanceResponse, SessionTokensResponse, TokenResponse,
     UserBanResponse,
@@ -58,9 +60,12 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/api/v1/auth/login/totp", post(verify_totp))
         .route("/api/v1/auth/refresh", post(refresh))
         .route("/api/v1/auth/logout", post(logout))
+        .route("/api/v1/2fa/enable", post(enable_totp))
+        .route("/api/v1/2fa/confirm", post(confirm_totp))
+        .route("/api/v1/2fa/disable", delete(disable_totp))
         .route("/api/v1/users/me", get(user_get_me).delete(delete_me))
         .route("/api/v1/users/me/capabilities", get(user_capabilities))
-        .route("/api/v1/user/{user_id}", get(user_get))
+        .route("/api/v1/user/{user_id}", get(user_get).delete(delete_user))
         .route(
             "/api/v1/user/{user_id}/bans",
             get(list_user_bans).post(create_user_ban),
@@ -245,6 +250,42 @@ async fn logout(
 }
 
 ///////////////////
+// TOTP
+///////////////////
+
+async fn enable_totp(
+    State(state): State<Arc<AppState>>,
+    auth_user: AuthenticatedUser,
+) -> AppResult<Json<TotpSetupResponse>> {
+    let totp = state.totp.enable_for_user(auth_user.id).await?;
+    Ok(Json(TotpSetupResponse {
+        otp_auth_url: totp.to_url()?.to_string(),
+    }))
+}
+
+async fn confirm_totp(
+    State(state): State<Arc<AppState>>,
+    auth_user: AuthenticatedUser,
+    Json(totp_code): Json<TotpCodeRequest>,
+) -> AppResult<http::StatusCode> {
+    let totp_code: TotpCode = totp_code.code().try_into()?;
+
+    state.totp.confirm_for_user(auth_user.id, totp_code).await?;
+    Ok(http::StatusCode::CREATED)
+}
+
+async fn disable_totp(
+    state: State<Arc<AppState>>,
+    auth_user: AuthenticatedUser,
+    Json(totp_code): Json<TotpCodeRequest>,
+) -> AppResult<http::StatusCode> {
+    let totp_code: TotpCode = totp_code.code().try_into()?;
+    state.totp.delete_for_user(auth_user.id, totp_code).await?;
+    Ok(http::StatusCode::NO_CONTENT)
+}
+///////////////////
+
+///////////////////
 // USERS
 ///////////////////
 
@@ -425,7 +466,6 @@ async fn delete_me(
     Json(payload): Json<DeleteMeRequest>,
 ) -> AppResult<CookieJar> {
     let user_id = auth_user.id;
-
     let user = state.user_profile.get(user_id).await?;
     let resource = user.resource_ref()?;
 
@@ -440,13 +480,43 @@ async fn delete_me(
         )
         .await?;
 
-    state
-        .user_profile
-        .delete(user_id, &payload.password)
-        .await?;
-    state.perms.cleanup_deleted_resource(&resource).await?;
 
-    Ok(clear_session_cookies(jar, &state))
+    let is_valid = user.password_hash.verify(&payload.password)?;
+    if !is_valid {
+        return Err(AppError::Unauthorized("invalid password".to_string()));
+    }
+
+    delete_user(State(state.clone()), auth_user, Path(user_id.into())).await?;
+
+    Ok(clear_session_cookies(jar, &state.clone()))
+}
+
+async fn delete_user(
+    State(state): State<Arc<AppState>>,
+    auth_user: AuthenticatedUser,
+    Path(user_id): Path<Uuid>,
+) -> AppResult<http::StatusCode> {
+    let target_id = user_id.into();
+    let actor_id = auth_user.id;
+
+    let target_user = state.user_profile.get(target_id).await?;
+    let resource = target_user.resource_ref()?;
+
+    state
+        .perms
+        .require_resource_access(
+            actor_id.into(),
+            &resource,
+            ResourceAction::Delete,
+            target_user.is_public,
+            &ContextSet::empty(),
+        )
+        .await?;
+
+
+    state.user_profile.delete(target_id).await?;
+    state.perms.cleanup_deleted_resource(&resource).await?;
+    Ok(http::StatusCode::NO_CONTENT)
 }
 
 ///////////////////
@@ -1090,7 +1160,7 @@ async fn add_group_member(
     .await?;
 
     // вес: actor не может выдать группу тяжелее или равную своей — иначе
-    // добавление в группу становится обходным способом самоповышения
+    // добавление в группу становится обходным способом само-повышения
     require_actor_outweighs_group(&state, user_id.into(), &name, "grant").await?;
 
     let expires_at = payload.expires_at.map(NodeExpiry::new);

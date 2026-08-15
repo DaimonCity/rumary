@@ -1,6 +1,6 @@
 -- The permissions subsystem is normalized separately: its traits operate on a
 -- permission graph, so one aggregate requires several relational tables.
-CREATE TABLE groups (
+CREATE TABLE IF NOT EXISTS  groups (
     id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name       TEXT NOT NULL UNIQUE,
     weight     INTEGER NOT NULL DEFAULT 0 CHECK (weight >= 0),
@@ -10,7 +10,7 @@ CREATE TABLE groups (
     CHECK (name ~ '^[a-z0-9_-]+$')
 );
 
-CREATE TABLE group_inheritance (
+CREATE TABLE IF NOT EXISTS  group_inheritance (
     group_id    UUID NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
     parent_name TEXT NOT NULL REFERENCES groups(name) ON DELETE CASCADE,
     context     JSONB NOT NULL DEFAULT '{}'::jsonb,
@@ -18,7 +18,7 @@ CREATE TABLE group_inheritance (
     CHECK (jsonb_typeof(context) = 'object')
 );
 
-CREATE TABLE permission_nodes (
+CREATE TABLE IF NOT EXISTS  permission_nodes (
     id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     holder_type TEXT NOT NULL CHECK (holder_type IN ('user', 'group')),
     holder_id   TEXT NOT NULL,
@@ -33,10 +33,10 @@ CREATE TABLE permission_nodes (
     UNIQUE (holder_type, holder_id, node_key, context)
 );
 
-CREATE INDEX idx_permission_nodes_holder
+CREATE INDEX IF NOT EXISTS idx_permission_nodes_holder
     ON permission_nodes(holder_type, holder_id);
 
-CREATE TABLE user_groups (
+CREATE TABLE IF NOT EXISTS  user_groups (
     user_id    UUID NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
     group_name TEXT NOT NULL REFERENCES groups(name) ON DELETE CASCADE,
     context    JSONB NOT NULL DEFAULT '{}'::jsonb,
@@ -45,7 +45,7 @@ CREATE TABLE user_groups (
     CHECK (jsonb_typeof(context) = 'object')
 );
 
-CREATE INDEX idx_user_groups_group_name ON user_groups(group_name);
+CREATE INDEX IF NOT EXISTS  idx_user_groups_group_name ON user_groups(group_name);
 
 INSERT INTO groups (name, weight) VALUES
     ('user', 0),
@@ -71,6 +71,7 @@ INSERT INTO permission_nodes (holder_type, holder_id, node_key, value) VALUES
     ('group', 'user',  'instance.list', true),
     ('group', 'user',  'instance.configurations.list', true),
     ('group', 'user',  'user.get', true),
+    ('group', 'user',  'user.delete', true),
     ('group', 'user',  'group.get', true),
     ('group', 'user',  'group.list', true),
     ('group', 'admin', 'configuration.*', true),

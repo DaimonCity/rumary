@@ -8,3 +8,5 @@
 /frontend/*.tsbuildinfo
 /.codex/
 /.agents/
+/dev.log
+/server/volume/instances/o

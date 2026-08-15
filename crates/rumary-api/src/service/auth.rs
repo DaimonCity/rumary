@@ -8,7 +8,7 @@ use axum::extract::{FromRef, FromRequestParts};
 use chrono::{Duration, Utc};
 use http::header;
 use jsonwebtoken::{DecodingKey, EncodingKey, Header, Validation, decode, encode};
-use rumary_dto::domain::api::{LoginOutcome, RoleType, User, UserSession};
+use rumary_dto::domain::api::{LoginOutcome, User, UserSession};
 use rumary_dto::domain::api::{NewUser, RefreshSessionUpdate};
 use rumary_dto::domain::api::{WsTicketClaims, WsTicketV2Claims};
 use rumary_dto::domain::api::value_object::auth::expiration_time::ExpirationTime;
@@ -101,7 +101,7 @@ impl AuthProvider for AuthService {
     type Error = AppError;
 
     async fn register(&self, payload: RegisterRequest) -> AppResult<SessionTokensResponse> {
-        let password_hash = PasswordHash::new(payload.password)?;
+        let password_hash = PasswordHash::try_from(payload.password)?;
         let user = self
             .user_repo
             .create_user(NewUser {
@@ -160,7 +160,7 @@ impl AuthProvider for AuthService {
 
         if !totp_service.is_enabled(user_id).await?
             || !totp_service
-                .verify_user_code(user_id, &payload.totp_code)
+                .verify_user_code(user_id, payload.totp_code.try_into()?)
                 .await?
         {
             return Err(AppError::NotFound(format!(
@@ -251,7 +251,6 @@ impl AuthProvider for AuthService {
         let exp = now + Duration::seconds(self.ws_ticket_ttl_seconds);
         let claims = WsTicketClaims {
             sub: user.id.to_string(),
-            level: user.access_level,
             ver: user.token_version,
             purpose: "ws".to_string(),
             exp: exp.timestamp() as usize,
@@ -428,15 +427,3 @@ where
 pub struct AuthenticatedUser {
     pub id: UserId,
 }
-
-#[derive(Debug, Clone)]
-pub struct VipUser;
-
-#[derive(Debug, Clone)]
-pub struct AdminUser(pub RoleType, pub u16);
-
-#[derive(Debug, Clone)]
-pub struct OwnerUser;
-
-#[derive(Debug, Clone)]
-pub struct MaybeWorkerUser(pub Option<AuthenticatedUser>);

@@ -10,8 +10,9 @@ use rumary_dto::domain::api::value_object::error::ValueObjectError;
 use rumary_dto::domain::api::value_object::name::{
     DescriptionError, DirectoryNameError, DisplayNameError,
 };
+use rumary_dto::domain::api::value_object::totp::TotpCodeError;
 use rumary_dto::domain::api::value_object::url::IconUrlError;
-use rumary_dto::domain::api::value_object::user::{HashError, LoginError, NicknameError};
+use rumary_dto::domain::api::value_object::user::{LoginError, NicknameError, PasswordHashError};
 use rumary_dto::domain::api::value_object::version::VersionError;
 use rumary_dto::domain::perms::value_object::error::PermsValueObjectError;
 use rumary_dto::domain::perms::value_object::group::{GroupNameError, GroupWeightError};
@@ -76,8 +77,8 @@ pub enum AppError {
     InvalidLogin(LoginError),
     #[error("invalid nickname")]
     InvalidNickname(NicknameError),
-    #[error("invalid hash")]
-    InvalidHash(HashError),
+    #[error("invalid hash: {0}")]
+    InvalidHash(PasswordHashError),
     #[error("json error: {0}")]
     JsonError(serde_json::error::Error),
     #[error("resource type error: {0}")]
@@ -91,7 +92,15 @@ pub enum AppError {
     #[error("invalid group weight")]
     InvalidGroupWeight(GroupWeightError),
     #[error("init totp error: {0}")]
-    TotpError(totp_rs::TotpError)
+    TotpError(totp_rs::TotpError),
+    #[error("totp code error: {0}")]
+    TotpCodeError(TotpCodeError),
+}
+
+#[derive(Serialize)]
+pub struct PublicError {
+    pub code: &'static str,
+    pub message: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -101,10 +110,12 @@ struct ErrorBody {
 
 impl IntoResponse for AppError {
     fn into_response(self) -> Response {
+        log::error!("{}", self);
         let status = match self {
             Self::NotFound(_) => StatusCode::NOT_FOUND,
             Self::Conflict(_) => StatusCode::CONFLICT,
             Self::Validation(_)
+            | Self::TotpCodeError(_)
             | Self::ShareTargetError(_)
             | Self::InvalidGroupName(_)
             | Self::InvalidGroupWeight(_)
@@ -156,7 +167,7 @@ err_from!(http::Error, AppError, Http);
 err_from!(ExpirationTimeError, AppError, TokenExpired);
 err_from!(NicknameError, AppError, InvalidNickname);
 err_from!(LoginError, AppError, InvalidLogin);
-err_from!(HashError, AppError, InvalidHash);
+err_from!(PasswordHashError, AppError, InvalidHash);
 err_from!(DisplayNameError, AppError, InvalidDisplayName);
 err_from!(DirectoryNameError, AppError, InvalidDirectoryName);
 err_from!(VersionError, AppError, InvalidVersion);
@@ -170,6 +181,7 @@ err_from!(ShareTargetError, AppError, ShareTargetError);
 err_from!(GroupWeightError, AppError, InvalidGroupWeight);
 err_from!(GroupNameError, AppError, InvalidGroupName);
 err_from!(totp_rs::TotpError, AppError, TotpError);
+err_from!(TotpCodeError, AppError, TotpCodeError);
 
 impl From<PermissionError> for AppError {
     fn from(err: PermissionError) -> Self {

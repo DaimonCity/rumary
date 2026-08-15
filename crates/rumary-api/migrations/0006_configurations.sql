@@ -1,5 +1,5 @@
 -- ConfigurationRepository owns this table.
-CREATE TABLE configurations (
+CREATE TABLE IF NOT EXISTS  configurations (
     id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     icon         TEXT,
     dir_name     TEXT NOT NULL,
